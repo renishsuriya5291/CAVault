@@ -51,6 +51,15 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // CA Professional Theme Colors
+        ca: {
+          primary: "#1e40af",      // Professional Blue
+          secondary: "#059669",    // Success Green
+          accent: "#dc2626",       // Important Red
+          neutral: "#64748b",      // Slate Gray
+          light: "#f8fafc",        // Light Background
+          dark: "#0f172a",         // Dark Text
+        }
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -66,10 +75,15 @@ module.exports = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "fade-in": {
+          from: { opacity: "0", transform: "translateY(10px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fade-in": "fade-in 0.3s ease-out",
       },
     },
   },
