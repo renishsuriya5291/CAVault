@@ -15,12 +15,12 @@ Route::get('/', function () {
 
 /*
 |--------------------------------------------------------------------------
-| API Routes (Bypassing CSRF completely)
+| API Routes
 |--------------------------------------------------------------------------
 */
 
-// API routes without CSRF middleware
-Route::prefix('api')->withoutMiddleware([\App\Http\Middleware\VerifyCsrfToken::class])->group(function () {
+// API routes (CSRF excluded via bootstrap/app.php)
+Route::prefix('api')->group(function () {
     
     // Public routes (no authentication required)
     Route::prefix('auth')->group(function () {

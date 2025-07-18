@@ -24,8 +24,18 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: false,
   });
 
-  // Set up axios defaults
+  // Set up axios defaults with your Laravel backend URL
   useEffect(() => {
+    // Configure axios base URL - update this to match your Laravel server
+    const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    
+    axios.defaults.baseURL = baseURL;
+    axios.defaults.headers.common['Content-Type'] = 'application/json';
+    axios.defaults.headers.common['Accept'] = 'application/json';
+    
+    // For Sanctum SPA authentication
+    axios.defaults.withCredentials = true;
+
     const token = localStorage.getItem('ca_token');
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -36,13 +46,26 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // Get CSRF token from Laravel (for SPA authentication)
+  const getCsrfToken = async () => {
+    try {
+      await axios.get('/sanctum/csrf-cookie');
+    } catch (error) {
+      console.error('Failed to get CSRF token:', error);
+    }
+  };
+
   // Verify token and get user information
   const verifyToken = async () => {
     try {
-      const response = await axios.get('/api/user');
+      const response = await axios.get('/api/auth/user');
+      
+      // Handle different response structures
+      const userData = response.data.success ? response.data.user : response.data;
+      
       setAuth(prev => ({
         ...prev,
-        user: response.data,
+        user: userData,
         loading: false,
         isAuthenticated: true,
       }));
@@ -57,31 +80,75 @@ export const AuthProvider = ({ children }) => {
     try {
       setAuth(prev => ({ ...prev, loading: true }));
       
-      const response = await axios.post('/api/login', { 
+      // For token-based authentication, we don't need CSRF cookie
+      // await getCsrfToken();
+      
+      const response = await axios.post('/api/auth/login', { 
         email, 
         password 
       });
       
-      const { user, token } = response.data;
+      console.log('Login response:', response.data); // Debug log
       
-      // Store token
-      localStorage.setItem('ca_token', token);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      setAuth({
-        user,
-        token,
-        loading: false,
-        isAuthenticated: true,
-      });
-      
-      return { success: true, user };
+      if (response.data.success) {
+        const { user, token } = response.data.data;
+        
+        // Store token
+        localStorage.setItem('ca_token', token);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        setAuth({
+          user,
+          token,
+          loading: false,
+          isAuthenticated: true,
+        });
+        
+        return { success: true, user };
+      } else {
+        setAuth(prev => ({ ...prev, loading: false }));
+        return { 
+          success: false, 
+          error: response.data.message || 'Login failed'
+        };
+      }
     } catch (error) {
       setAuth(prev => ({ ...prev, loading: false }));
       
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.error ||
-                          'Login failed. Please try again.';
+      console.error('Login error:', error); // Debug log
+      console.error('Error response:', error.response); // Debug log
+      
+      // Handle different error response structures
+      let errorMessage = 'Login failed. Please try again.';
+      
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        console.log('Error status:', status);
+        console.log('Error data:', data);
+        
+        if (status === 401) {
+          errorMessage = 'Invalid email or password.';
+        } else if (status === 422) {
+          // Validation errors
+          if (data.errors) {
+            errorMessage = Object.values(data.errors).flat().join(', ');
+          } else if (data.message) {
+            errorMessage = data.message;
+          }
+        } else if (status === 419) {
+          errorMessage = 'Session expired. Please try again.';
+        } else if (data?.message) {
+          errorMessage = data.message;
+        } else if (data?.error) {
+          errorMessage = data.error;
+        }
+      } else if (error.request) {
+        errorMessage = 'Network error. Please check your connection and make sure the server is running.';
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMessage = 'Cannot connect to server. Please check if the Laravel server is running on http://localhost:8000';
+      }
       
       return { 
         success: false, 
@@ -95,27 +162,74 @@ export const AuthProvider = ({ children }) => {
     try {
       setAuth(prev => ({ ...prev, loading: true }));
       
-      const response = await axios.post('/api/register', userData);
-      const { user, token } = response.data;
+      // For token-based authentication, we don't need CSRF cookie
+      // await getCsrfToken();
       
-      // Store token
-      localStorage.setItem('ca_token', token);
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const response = await axios.post('/api/auth/register', userData);
       
-      setAuth({
-        user,
-        token,
-        loading: false,
-        isAuthenticated: true,
-      });
+      console.log('Register response:', response.data); // Debug log
       
-      return { success: true, user };
+      if (response.data.success) {
+        const { user, token } = response.data.data;
+        
+        // Store token
+        localStorage.setItem('ca_token', token);
+        axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        
+        setAuth({
+          user,
+          token,
+          loading: false,
+          isAuthenticated: true,
+        });
+        
+        return { success: true, user };
+      } else {
+        setAuth(prev => ({ ...prev, loading: false }));
+        return { 
+          success: false, 
+          error: response.data.message || 'Registration failed'
+        };
+      }
     } catch (error) {
       setAuth(prev => ({ ...prev, loading: false }));
       
-      const errorMessage = error.response?.data?.message || 
-                          error.response?.data?.errors ||
-                          'Registration failed. Please try again.';
+      console.error('Registration error:', error); // Debug log
+      console.error('Error response:', error.response); // Debug log
+      
+      // Handle different error response structures
+      let errorMessage = 'Registration failed. Please try again.';
+      
+      if (error.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+        
+        console.log('Error status:', status);
+        console.log('Error data:', data);
+        
+        if (status === 422) {
+          // Validation errors
+          if (data.errors) {
+            // Return errors object for field-specific error handling
+            return { 
+              success: false, 
+              error: data.errors
+            };
+          } else if (data.message) {
+            errorMessage = data.message;
+          }
+        } else if (status === 419) {
+          errorMessage = 'Session expired. Please try again.';
+        } else if (data?.message) {
+          errorMessage = data.message;
+        } else if (data?.error) {
+          errorMessage = data.error;
+        }
+      } else if (error.request) {
+        errorMessage = 'Network error. Please check your connection and make sure the server is running.';
+      } else if (error.code === 'ERR_NETWORK') {
+        errorMessage = 'Cannot connect to server. Please check if the Laravel server is running on http://localhost:8000';
+      }
       
       return { 
         success: false, 
@@ -128,9 +242,29 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       // Call backend logout endpoint
-      await axios.post('/api/logout');
+      await axios.post('/api/auth/logout');
     } catch (error) {
       console.error('Logout request failed:', error);
+    } finally {
+      // Clean up regardless of backend response
+      localStorage.removeItem('ca_token');
+      delete axios.defaults.headers.common['Authorization'];
+      
+      setAuth({
+        user: null,
+        token: null,
+        loading: false,
+        isAuthenticated: false,
+      });
+    }
+  };
+
+  // Logout from all devices
+  const logoutAll = async () => {
+    try {
+      await axios.post('/api/auth/logout-all');
+    } catch (error) {
+      console.error('Logout all request failed:', error);
     } finally {
       // Clean up regardless of backend response
       localStorage.removeItem('ca_token');
@@ -148,14 +282,18 @@ export const AuthProvider = ({ children }) => {
   // Update user profile
   const updateProfile = async (profileData) => {
     try {
-      const response = await axios.put('/api/profile', profileData);
+      const response = await axios.put('/api/auth/profile', profileData);
       
-      setAuth(prev => ({
-        ...prev,
-        user: { ...prev.user, ...response.data }
-      }));
-      
-      return { success: true, user: response.data };
+      if (response.data.success) {
+        setAuth(prev => ({
+          ...prev,
+          user: { ...prev.user, ...response.data.data }
+        }));
+        
+        return { success: true, user: response.data.data };
+      } else {
+        return { success: false, error: response.data.message };
+      }
     } catch (error) {
       const errorMessage = error.response?.data?.message || 
                           'Profile update failed';
@@ -164,15 +302,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Change password
-  const changePassword = async (currentPassword, newPassword) => {
+  const changePassword = async (currentPassword, newPassword, confirmPassword) => {
     try {
-      await axios.post('/api/change-password', {
+      const response = await axios.post('/api/auth/change-password', {
         current_password: currentPassword,
         new_password: newPassword,
-        new_password_confirmation: newPassword
+        new_password_confirmation: confirmPassword
       });
       
-      return { success: true };
+      if (response.data.success) {
+        return { success: true, message: response.data.message };
+      } else {
+        return { success: false, error: response.data.message };
+      }
     } catch (error) {
       const errorMessage = error.response?.data?.message || 
                           'Password change failed';
@@ -183,8 +325,13 @@ export const AuthProvider = ({ children }) => {
   // Reset password request
   const requestPasswordReset = async (email) => {
     try {
-      await axios.post('/api/password/email', { email });
-      return { success: true };
+      const response = await axios.post('/api/auth/forgot-password', { email });
+      
+      if (response.data.success) {
+        return { success: true, message: response.data.message };
+      } else {
+        return { success: false, error: response.data.message };
+      }
     } catch (error) {
       const errorMessage = error.response?.data?.message || 
                           'Password reset request failed';
@@ -226,10 +373,12 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    logoutAll,
     updateProfile,
     changePassword,
     requestPasswordReset,
     verifyToken,
+    getCsrfToken,
     
     // Utilities
     hasPermission,
@@ -270,10 +419,12 @@ export const useAuthenticatedApi = () => {
   const { token, logout } = useAuth();
 
   const api = axios.create({
-    baseURL: process.env.REACT_APP_API_URL || '/api',
+    baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+    withCredentials: true,
     headers: {
       'Authorization': token ? `Bearer ${token}` : '',
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
   });
 

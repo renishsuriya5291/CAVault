@@ -2,12 +2,13 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { Shield, Mail, Lock, User, Phone, FileText, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { Shield, Mail, Lock, User, Phone, FileText, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 const Register = () => {
   const navigate = useNavigate();
   const { register } = useAuth();
-  
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -35,7 +36,7 @@ const Register = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
-    
+
     // Clear specific error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
@@ -96,6 +97,29 @@ const Register = () => {
   const handleNext = () => {
     if (validateStep(step)) {
       setStep(step + 1);
+      toast.success('Step completed!', {
+        description: `Step ${step} completed successfully`,
+        icon: <CheckCircle className="h-4 w-4 text-green-600" />,
+        style: {
+          background: '#f0f9ff',
+          border: '1px solid #3b82f6',
+          color: '#1e293b',
+        },
+        duration: 2000,
+      });
+    } else {
+      // Show validation errors in toast
+      const errorCount = Object.keys(errors).length;
+      toast.error('Please fix the errors', {
+        description: `${errorCount} field${errorCount > 1 ? 's' : ''} need${errorCount > 1 ? '' : 's'} attention`,
+        icon: <AlertCircle className="h-4 w-4 text-red-600" />,
+        style: {
+          background: '#fef2f2',
+          border: '1px solid #ef4444',
+          color: '#991b1b',
+        },
+        duration: 3000,
+      });
     }
   };
 
@@ -108,27 +132,79 @@ const Register = () => {
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateStep(3)) return;
-    
+
     setLoading(true);
     setErrors({});
 
     try {
       const result = await register(formData);
-      
+
       if (result.success) {
-        // Registration successful, redirect to dashboard
+        // Success toast
+        toast.success('Account created successfully!', {
+          description: `Welcome to CA Portal, ${result.user.name}!`,
+          icon: <CheckCircle className="h-4 w-4 text-green-600" />,
+          style: {
+            background: '#f0f9ff',
+            border: '1px solid #3b82f6',
+            color: '#1e293b',
+          },
+          className: 'ca-shadow',
+          duration: 4000,
+        });
+
+        // Navigate to dashboard
         navigate('/dashboard');
       } else {
         // Handle registration errors
         if (typeof result.error === 'object') {
+          // Validation errors from Laravel
+          Object.entries(result.error).forEach(([field, messages]) => {
+            const errorMessage = Array.isArray(messages) ? messages.join(', ') : messages;
+            toast.error(`${field.charAt(0).toUpperCase() + field.slice(1).replace('_', ' ')} Error`, {
+              description: errorMessage,
+              icon: <AlertCircle className="h-4 w-4 text-red-600" />,
+              style: {
+                background: '#fef2f2',
+                border: '1px solid #ef4444',
+                color: '#991b1b',
+              },
+              className: 'ca-shadow',
+              duration: 6000,
+            });
+          });
           setErrors(result.error);
         } else {
+          // General error
+          toast.error('Registration Failed', {
+            description: result.error || 'Please check your information and try again',
+            icon: <AlertCircle className="h-4 w-4 text-red-600" />,
+            style: {
+              background: '#fef2f2',
+              border: '1px solid #ef4444',
+              color: '#991b1b',
+            },
+            className: 'ca-shadow',
+            duration: 5000,
+          });
           setErrors({ general: result.error });
         }
       }
     } catch (error) {
+      console.error('Registration error:', error);
+      toast.error('Network Error', {
+        description: 'Unable to connect to the server. Please try again.',
+        icon: <AlertCircle className="h-4 w-4 text-red-600" />,
+        style: {
+          background: '#fef2f2',
+          border: '1px solid #ef4444',
+          color: '#991b1b',
+        },
+        className: 'ca-shadow',
+        duration: 5000,
+      });
       setErrors({ general: 'Registration failed. Please try again.' });
     } finally {
       setLoading(false);
@@ -156,9 +232,8 @@ const Register = () => {
             required
             value={formData.name}
             onChange={handleChange}
-            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${
-              errors.name ? 'border-red-500' : 'border-gray-300'
-            }`}
+            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${errors.name ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="Enter your full name"
           />
         </div>
@@ -178,9 +253,8 @@ const Register = () => {
             required
             value={formData.email}
             onChange={handleChange}
-            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${
-              errors.email ? 'border-red-500' : 'border-gray-300'
-            }`}
+            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${errors.email ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="Enter your email address"
           />
         </div>
@@ -200,9 +274,8 @@ const Register = () => {
             required
             value={formData.ca_license_number}
             onChange={handleChange}
-            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${
-              errors.ca_license_number ? 'border-red-500' : 'border-gray-300'
-            }`}
+            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${errors.ca_license_number ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="Enter your CA license number"
           />
         </div>
@@ -222,9 +295,8 @@ const Register = () => {
             required
             value={formData.phone}
             onChange={handleChange}
-            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${
-              errors.phone ? 'border-red-500' : 'border-gray-300'
-            }`}
+            className={`w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${errors.phone ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="Enter your phone number"
           />
         </div>
@@ -252,9 +324,8 @@ const Register = () => {
           required
           value={formData.firm_name}
           onChange={handleChange}
-          className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${
-            errors.firm_name ? 'border-red-500' : 'border-gray-300'
-          }`}
+          className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${errors.firm_name ? 'border-red-500' : 'border-gray-300'
+            }`}
           placeholder="Enter your firm name"
         />
         {errors.firm_name && <p className="text-red-500 text-sm">{errors.firm_name}</p>}
@@ -319,9 +390,8 @@ const Register = () => {
             required
             value={formData.password}
             onChange={handleChange}
-            className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${
-              errors.password ? 'border-red-500' : 'border-gray-300'
-            }`}
+            className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${errors.password ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="Create a strong password"
           />
           <button
@@ -351,9 +421,8 @@ const Register = () => {
             required
             value={formData.password_confirmation}
             onChange={handleChange}
-            className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${
-              errors.password_confirmation ? 'border-red-500' : 'border-gray-300'
-            }`}
+            className={`w-full pl-10 pr-12 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-ca-primary focus:border-transparent ${errors.password_confirmation ? 'border-red-500' : 'border-gray-300'
+              }`}
             placeholder="Confirm your password"
           />
           <button
@@ -413,9 +482,8 @@ const Register = () => {
             name="terms_accepted"
             checked={formData.terms_accepted}
             onChange={handleChange}
-            className={`mt-1 w-4 h-4 text-ca-primary border-2 rounded focus:ring-ca-primary ${
-              errors.terms_accepted ? 'border-red-500' : 'border-gray-300'
-            }`}
+            className={`mt-1 w-4 h-4 text-ca-primary border-2 rounded focus:ring-ca-primary ${errors.terms_accepted ? 'border-red-500' : 'border-gray-300'
+              }`}
           />
           <span className="text-sm text-ca-dark">
             I accept the <Link to="/terms" className="text-ca-primary hover:underline">Terms and Conditions</Link> and{' '}
@@ -451,11 +519,10 @@ const Register = () => {
             {[1, 2, 3].map((stepNumber) => (
               <div
                 key={stepNumber}
-                className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                  step >= stepNumber
+                className={`flex items-center justify-center w-8 h-8 rounded-full ${step >= stepNumber
                     ? 'bg-ca-primary text-white'
                     : 'bg-gray-200 text-gray-500'
-                }`}
+                  }`}
               >
                 {step > stepNumber ? (
                   <CheckCircle className="w-4 h-4" />
@@ -491,7 +558,7 @@ const Register = () => {
                   Previous
                 </button>
               )}
-              
+
               <div className="ml-auto">
                 {step < 3 ? (
                   <button
@@ -519,8 +586,8 @@ const Register = () => {
         <div className="mt-6 text-center">
           <p className="text-sm text-ca-neutral">
             Already have an account?{' '}
-            <Link 
-              to="/login" 
+            <Link
+              to="/login"
               className="text-ca-primary hover:underline font-medium"
             >
               Sign in here

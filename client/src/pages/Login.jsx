@@ -1,36 +1,96 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
-import { Alert, AlertDescription } from '../components/ui/alert';
-import { Shield, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Shield, Mail, Lock, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { toast } from 'sonner';
 
 const Login = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const { login } = useAuth();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
 
-    const result = await login(formData.email, formData.password);
-    
-    if (!result.success) {
-      setError(result.error);
+    try {
+      const result = await login(formData.email, formData.password);
+      
+      if (result.success) {
+        // Success toast with your theme colors
+        toast.success('Welcome back!', {
+          description: `Successfully signed in as ${result.user.name}`,
+          icon: <CheckCircle className="h-4 w-4 text-green-600" />,
+          style: {
+            background: '#f0f9ff', // ca-light equivalent
+            border: '1px solid #3b82f6', // ca-primary
+            color: '#1e293b', // ca-dark
+          },
+          className: 'ca-shadow',
+          duration: 3000,
+        });
+        
+        // Navigate to dashboard after successful login
+        navigate('/dashboard');
+      } else {
+        // Handle different types of errors
+        if (typeof result.error === 'object') {
+          // Validation errors - show each field error
+          Object.entries(result.error).forEach(([field, messages]) => {
+            const errorMessage = Array.isArray(messages) ? messages.join(', ') : messages;
+            toast.error(`${field.charAt(0).toUpperCase() + field.slice(1)} Error`, {
+              description: errorMessage,
+              icon: <AlertCircle className="h-4 w-4 text-red-600" />,
+              style: {
+                background: '#fef2f2', // Light red background
+                border: '1px solid #ef4444', // Red border
+                color: '#991b1b', // Dark red text
+              },
+              className: 'ca-shadow',
+              duration: 5000,
+            });
+          });
+        } else {
+          // General error message
+          toast.error('Login Failed', {
+            description: result.error || 'Please check your credentials and try again',
+            icon: <AlertCircle className="h-4 w-4 text-red-600" />,
+            style: {
+              background: '#fef2f2',
+              border: '1px solid #ef4444',
+              color: '#991b1b',
+            },
+            className: 'ca-shadow',
+            duration: 5000,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      toast.error('Network Error', {
+        description: 'Unable to connect to the server. Please try again.',
+        icon: <AlertCircle className="h-4 w-4 text-red-600" />,
+        style: {
+          background: '#fef2f2',
+          border: '1px solid #ef4444',
+          color: '#991b1b',
+        },
+        className: 'ca-shadow',
+        duration: 5000,
+      });
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const handleChange = (e) => {
@@ -60,12 +120,6 @@ const Login = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
                 <div className="relative">
