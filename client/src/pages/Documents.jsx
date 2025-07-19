@@ -28,12 +28,14 @@ import {
   Grid,
   List,
   CheckCircle,
-  X
+  X,
+  Users,
+  Plus
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import Header from '../components/layout/Header';
 import Sidebar from '../components/layout/Sidebar';
-import { documentsAPI, handleApiError } from '../services/api';
+import { documentsAPI, clientsAPI, handleApiError } from '../services/api';
 
 const Documents = () => {
   const { user } = useAuth();
@@ -42,6 +44,7 @@ const Documents = () => {
   // Main state
   const [documents, setDocuments] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [clients, setClients] = useState([]); // NEW: Client options
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -50,7 +53,7 @@ const Documents = () => {
   // Filter and search state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedClient, setSelectedClient] = useState('');
+  const [selectedClient, setSelectedClient] = useState('all'); // UPDATED: Changed from string to dropdown
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [sortBy, setSortBy] = useState('upload_date');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -87,7 +90,7 @@ const Documents = () => {
       // Add filters if they exist
       if (searchQuery.trim()) params.search = searchQuery.trim();
       if (selectedCategory && selectedCategory !== 'all') params.category = selectedCategory;
-      if (selectedClient.trim()) params.client = selectedClient.trim();
+      if (selectedClient && selectedClient !== 'all') params.client_id = selectedClient; // UPDATED: Use client_id
       if (selectedStatus && selectedStatus !== 'all') params.status = selectedStatus;
 
       const response = await documentsAPI.getDocuments(params);
@@ -139,6 +142,22 @@ const Documents = () => {
     }
   };
 
+  // NEW: Fetch client options
+  const fetchClientOptions = async () => {
+    try {
+      const response = await clientsAPI.getClientOptions();
+      if (response.data.success) {
+        setClients([
+          { value: 'all', label: 'All Clients' },
+          ...response.data.data
+        ]);
+      }
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+      setClients([{ value: 'all', label: 'All Clients' }]);
+    }
+  };
+
   // Fetch stats
   const fetchStats = async () => {
     try {
@@ -154,13 +173,14 @@ const Documents = () => {
   // Initial data fetch
   useEffect(() => {
     fetchCategories();
+    fetchClientOptions(); // NEW: Fetch client options
     fetchStats();
   }, []);
 
   // Fetch documents when filters change
   useEffect(() => {
     fetchDocuments();
-  }, [currentPage, perPage, sortBy, sortOrder, selectedCategory, selectedStatus]);
+  }, [currentPage, perPage, sortBy, sortOrder, selectedCategory, selectedClient, selectedStatus]); // UPDATED: Added selectedClient
 
   // Search with debounce
   useEffect(() => {
@@ -173,12 +193,13 @@ const Documents = () => {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, selectedClient]);
+  }, [searchQuery]);
 
   // Handle refresh
   const handleRefresh = () => {
     fetchDocuments(true);
     fetchStats();
+    fetchClientOptions(); // NEW: Refresh client options too
   };
 
   // Handle document deletion
@@ -295,7 +316,7 @@ const Documents = () => {
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedCategory('all');
-    setSelectedClient('');
+    setSelectedClient('all'); // UPDATED
     setSelectedStatus('all');
     setCurrentPage(1);
   };
@@ -367,6 +388,12 @@ const Documents = () => {
                   <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                   {refreshing ? 'Refreshing...' : 'Refresh'}
                 </Button>
+                <Button asChild variant="outline" className="border-ca-primary text-ca-primary hover:bg-ca-primary hover:text-white">
+                  <Link to="/clients">
+                    <Users className="w-4 h-4 mr-2" />
+                    Manage Clients
+                  </Link>
+                </Button>
                 <Button asChild className="bg-ca-primary hover:bg-blue-700">
                   <Link to="/upload">
                     <Upload className="w-4 h-4 mr-2" />
@@ -399,12 +426,12 @@ const Documents = () => {
               <CardContent className="p-6">
                 <div className="flex items-center">
                   <div className="p-3 rounded-lg bg-green-50">
-                    <FolderOpen className="w-6 h-6 text-ca-secondary" />
+                    <Users className="w-6 h-6 text-ca-secondary" />
                   </div>
                   <div className="ml-4">
-                    <p className="text-sm font-medium text-ca-neutral">Categories</p>
+                    <p className="text-sm font-medium text-ca-neutral">Active Clients</p>
                     <p className="text-2xl font-bold text-ca-dark">
-                      {Object.keys(stats.categoryCounts || {}).length || categories.length - 1}
+                      {stats.activeClients || clients.length - 1 || 0}
                     </p>
                   </div>
                 </div>
@@ -495,12 +522,20 @@ const Documents = () => {
                     </SelectContent>
                   </Select>
 
-                  <Input
-                    placeholder="Filter by client..."
-                    value={selectedClient}
-                    onChange={(e) => setSelectedClient(e.target.value)}
-                    className="w-full sm:w-48"
-                  />
+                  {/* UPDATED: Client dropdown instead of text input */}
+                  <Select value={selectedClient} onValueChange={setSelectedClient}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <Users className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder="All Clients" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map(client => (
+                        <SelectItem key={client.value} value={client.value}>
+                          {client.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
 
                   <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                     <SelectTrigger className="w-full sm:w-48">
@@ -533,7 +568,7 @@ const Documents = () => {
                     </SelectContent>
                   </Select>
 
-                  {(searchQuery || (selectedCategory && selectedCategory !== 'all') || selectedClient || (selectedStatus && selectedStatus !== 'all')) && (
+                  {(searchQuery || (selectedCategory && selectedCategory !== 'all') || (selectedClient && selectedClient !== 'all') || (selectedStatus && selectedStatus !== 'all')) && (
                     <Button variant="ghost" size="sm" onClick={clearFilters}>
                       <X className="w-4 h-4 mr-2" />
                       Clear
@@ -551,18 +586,24 @@ const Documents = () => {
                 <FileText className="w-12 h-12 text-ca-neutral mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-ca-dark mb-2">No documents found</h3>
                 <p className="text-ca-neutral mb-4">
-                  {searchQuery || (selectedCategory && selectedCategory !== 'all') || selectedClient || (selectedStatus && selectedStatus !== 'all')
+                  {searchQuery || (selectedCategory && selectedCategory !== 'all') || (selectedClient && selectedClient !== 'all') || (selectedStatus && selectedStatus !== 'all')
                     ? 'Try adjusting your search criteria' 
                     : 'Upload your first document to get started'
                   }
                 </p>
                 <div className="flex gap-2 justify-center">
-                  {(searchQuery || (selectedCategory && selectedCategory !== 'all') || selectedClient || (selectedStatus && selectedStatus !== 'all')) && (
+                  {(searchQuery || (selectedCategory && selectedCategory !== 'all') || (selectedClient && selectedClient !== 'all') || (selectedStatus && selectedStatus !== 'all')) && (
                     <Button variant="outline" onClick={clearFilters}>
                       <X className="w-4 h-4 mr-2" />
                       Clear Filters
                     </Button>
                   )}
+                  <Button asChild variant="outline" className="mr-2">
+                    <Link to="/clients">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Client
+                    </Link>
+                  </Button>
                   <Button asChild className="bg-ca-primary hover:bg-blue-700">
                     <Link to="/upload">
                       <Upload className="w-4 h-4 mr-2" />
@@ -591,7 +632,7 @@ const Documents = () => {
                               {document.document_name || document.name || 'Untitled Document'}
                             </CardTitle>
                             <CardDescription className="text-xs">
-                              {document.client_name || document.client || 'Unknown Client'}
+                              {document.client_display_name || document.client_name || document.client || 'Unknown Client'}
                             </CardDescription>
                           </div>
                         </div>

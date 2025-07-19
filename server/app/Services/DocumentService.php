@@ -33,16 +33,16 @@ class DocumentService
             $originalFilename = $file->getClientOriginalName();
             $fileExtension = $file->getClientOriginalExtension();
             $fileName = $documentId . '.' . $fileExtension;
-            
+
             // Read file content
             $fileContent = file_get_contents($file->getPathname());
-            
+
             // Generate encryption key for this document
             $encryptionKey = $this->encryptionService->generateKey();
-            
+
             // Encrypt file content
             $encryptedContent = $this->encryptionService->encrypt($fileContent, $encryptionKey);
-            
+
             // Create file path structure: user_id/year/month/filename
             $filePath = sprintf(
                 '%d/%s/%s',
@@ -50,7 +50,7 @@ class DocumentService
                 now()->format('Y/m'),
                 $fileName
             );
-            
+
             // Upload to Wasabi S3
             $uploadResult = $this->wasabiService->uploadFile($filePath, $encryptedContent, [
                 'ContentType' => $file->getMimeType(),
@@ -60,15 +60,16 @@ class DocumentService
                     'document_id' => $documentId,
                 ]
             ]);
-            
+
             if (!$uploadResult['success']) {
                 throw new \Exception('Failed to upload file to cloud storage: ' . ($uploadResult['error'] ?? 'Unknown error'));
             }
-            
+
             // Store document in database
             $document = Document::create([
                 'user_id' => $user->id,
-                'client_name' => $metadata['client_name'],
+                'client_id' => $metadata['client_id'],        // NEW: Store client ID
+                'client_name' => $metadata['client_name'],    // Keep for backward compatibility
                 'document_name' => $this->generateDocumentName($originalFilename, $metadata),
                 'original_filename' => $originalFilename,
                 'file_path' => $filePath,
@@ -89,24 +90,24 @@ class DocumentService
                     'user_agent' => request()->userAgent(),
                 ]
             ]);
-            
+
             // Process document asynchronously (you can use queues here)
             $this->processDocument($document);
-            
+
             Log::info('Document uploaded successfully', [
                 'document_id' => $document->id,
                 'user_id' => $user->id,
                 'filename' => $originalFilename,
                 'size' => $file->getSize()
             ]);
-            
+
             return [
                 'id' => $document->id,
                 'document_name' => $document->document_name,
                 'status' => $document->status,
                 'upload_date' => $document->upload_date->toISOString(),
             ];
-            
+
         } catch (\Exception $e) {
             Log::error('Document upload failed', [
                 'user_id' => $user->id,
@@ -114,7 +115,7 @@ class DocumentService
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             throw $e;
         }
     }
@@ -127,14 +128,14 @@ class DocumentService
         // Generate temporary download token
         $token = Str::random(64);
         $tokenKey = "download_token:{$document->id}:{$token}";
-        
+
         // Store token in cache for 5 minutes
         Cache::put($tokenKey, [
             'document_id' => $document->id,
             'user_id' => $document->user_id,
             'created_at' => now()
         ], now()->addMinutes(5));
-        
+
         return route('api.documents.download-file', [
             'id' => $document->id,
             'token' => $token
@@ -148,14 +149,14 @@ class DocumentService
     {
         $tokenKey = "download_token:{$documentId}:{$token}";
         $tokenData = Cache::get($tokenKey);
-        
+
         if (!$tokenData || $tokenData['document_id'] !== $documentId) {
             return false;
         }
-        
+
         // Remove token after validation (single use)
         Cache::forget($tokenKey);
-        
+
         return true;
     }
 
@@ -167,13 +168,13 @@ class DocumentService
         try {
             // Get encrypted content from Wasabi
             $encryptedContent = $this->wasabiService->getFileContent($document->file_path);
-            
+
             // Decrypt encryption key
             $encryptionKey = $this->encryptionService->decryptKey($document->encryption_key);
-            
+
             // Decrypt file content
             $decryptedContent = $this->encryptionService->decrypt($encryptedContent, $encryptionKey);
-            
+
             $headers = [
                 'Content-Type' => $document->mime_type,
                 'Content-Disposition' => 'attachment; filename="' . $document->original_filename . '"',
@@ -182,17 +183,17 @@ class DocumentService
                 'Pragma' => 'no-cache',
                 'Expires' => '0',
             ];
-            
+
             return response()->streamDownload(function () use ($decryptedContent) {
                 echo $decryptedContent;
             }, $document->original_filename, $headers);
-            
+
         } catch (\Exception $e) {
             Log::error('File download failed', [
                 'document_id' => $document->id,
                 'error' => $e->getMessage()
             ]);
-            
+
             abort(500, 'Failed to process file for download');
         }
     }
@@ -205,30 +206,30 @@ class DocumentService
         try {
             // Delete from Wasabi S3
             $deleteResult = $this->wasabiService->deleteFile($document->file_path);
-            
+
             if (!$deleteResult['success']) {
                 Log::warning('Failed to delete file from cloud storage', [
                     'document_id' => $document->id,
                     'file_path' => $document->file_path
                 ]);
             }
-            
+
             // Soft delete from database
             $document->delete();
-            
+
             Log::info('Document deleted successfully', [
                 'document_id' => $document->id,
                 'file_path' => $document->file_path
             ]);
-            
+
             return true;
-            
+
         } catch (\Exception $e) {
             Log::error('Document deletion failed', [
                 'document_id' => $document->id,
                 'error' => $e->getMessage()
             ]);
-            
+
             throw $e;
         }
     }
@@ -239,29 +240,29 @@ class DocumentService
     public function advancedSearch(User $user, string $searchTerm, array $filters): array
     {
         $query = Document::where('user_id', $user->id);
-        
+
         // Text search
         if (!empty($searchTerm)) {
             $query->search($searchTerm);
         }
-        
+
         // Apply filters
         if (!empty($filters['category'])) {
             $query->byCategory($filters['category']);
         }
-        
+
         if (!empty($filters['client'])) {
             $query->byClient($filters['client']);
         }
-        
+
         if (!empty($filters['date_from'])) {
             $query->where('upload_date', '>=', $filters['date_from']);
         }
-        
+
         if (!empty($filters['date_to'])) {
             $query->where('upload_date', '<=', $filters['date_to']);
         }
-        
+
         if (!empty($filters['tags'])) {
             $tags = explode(',', $filters['tags']);
             $query->where(function ($q) use ($tags) {
@@ -270,26 +271,26 @@ class DocumentService
                 }
             });
         }
-        
+
         $results = $query->orderBy('upload_date', 'desc')
-                        ->limit(50)
-                        ->get()
-                        ->map(function ($document) {
-                            return [
-                                'id' => $document->id,
-                                'document_name' => $document->document_name,
-                                'client_name' => $document->client_name,
-                                'category' => $document->category,
-                                'file_size' => $document->formatted_file_size,
-                                'file_type' => strtoupper($document->file_type),
-                                'status' => $document->status,
-                                'upload_date' => $document->upload_date->format('M d, Y'),
-                                'uploaded_time_ago' => $document->uploaded_time_ago,
-                                'tags' => $document->tags ?? [],
-                                'download_url' => $document->getDownloadUrl(),
-                            ];
-                        });
-        
+            ->limit(50)
+            ->get()
+            ->map(function ($document) {
+                return [
+                    'id' => $document->id,
+                    'document_name' => $document->document_name,
+                    'client_name' => $document->client_name,
+                    'category' => $document->category,
+                    'file_size' => $document->formatted_file_size,
+                    'file_type' => strtoupper($document->file_type),
+                    'status' => $document->status,
+                    'upload_date' => $document->upload_date->format('M d, Y'),
+                    'uploaded_time_ago' => $document->uploaded_time_ago,
+                    'tags' => $document->tags ?? [],
+                    'download_url' => $document->getDownloadUrl(),
+                ];
+            });
+
         return $results->toArray();
     }
 
@@ -301,23 +302,23 @@ class DocumentService
         try {
             // Mark as processing
             $document->markAsProcessing();
-            
+
             // Here you can add additional processing:
             // - Virus scanning
             // - OCR for text extraction
             // - Thumbnail generation
             // - Document validation
-            
+
             // For now, just mark as completed
             sleep(1); // Simulate processing time
             $document->markAsProcessed();
-            
+
         } catch (\Exception $e) {
             Log::error('Document processing failed', [
                 'document_id' => $document->id,
                 'error' => $e->getMessage()
             ]);
-            
+
             $document->markAsFailed();
         }
     }
@@ -328,15 +329,15 @@ class DocumentService
     private function generateDocumentName(string $originalFilename, array $metadata): string
     {
         $baseName = pathinfo($originalFilename, PATHINFO_FILENAME);
-        
+
         // If filename already contains client name or category, use as is
         $clientName = $metadata['client_name'];
         $category = $metadata['category'];
-        
+
         if (stripos($baseName, $clientName) !== false) {
             return $baseName;
         }
-        
+
         // Generate descriptive name
         return sprintf('%s - %s', $category, $clientName);
     }
@@ -347,20 +348,22 @@ class DocumentService
     public function getStorageStats(User $user): array
     {
         $documents = Document::where('user_id', $user->id);
-        
+
         $totalSize = $documents->sum('file_size');
         $totalDocuments = $documents->count();
-        
+
         $categoryStats = $documents->selectRaw('category, COUNT(*) as count, SUM(file_size) as size')
-                                  ->groupBy('category')
-                                  ->get()
-                                  ->mapWithKeys(function ($item) {
-                                      return [$item->category => [
-                                          'count' => $item->count,
-                                          'size' => $this->formatBytes($item->size)
-                                      ]];
-                                  });
-        
+            ->groupBy('category')
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [
+                    $item->category => [
+                        'count' => $item->count,
+                        'size' => $this->formatBytes($item->size)
+                    ]
+                ];
+            });
+
         return [
             'total_size' => $totalSize,
             'total_documents' => $totalDocuments,
@@ -390,12 +393,12 @@ class DocumentService
     public function getRecentActivity(User $user, int $limit = 10): array
     {
         $recentDocuments = Document::where('user_id', $user->id)
-                                 ->orderBy('created_at', 'desc')
-                                 ->limit($limit)
-                                 ->get();
-        
+            ->orderBy('created_at', 'desc')
+            ->limit($limit)
+            ->get();
+
         $activities = [];
-        
+
         foreach ($recentDocuments as $document) {
             $activities[] = [
                 'id' => $document->id,
@@ -405,7 +408,7 @@ class DocumentService
                 'icon' => 'Upload',
                 'color' => 'text-green-600'
             ];
-            
+
             if ($document->processed_at) {
                 $activities[] = [
                     'id' => $document->id . '_processed',
@@ -417,12 +420,12 @@ class DocumentService
                 ];
             }
         }
-        
+
         // Sort by time and limit
         usort($activities, function ($a, $b) {
             return strtotime($b['time']) - strtotime($a['time']);
         });
-        
+
         return array_slice($activities, 0, $limit);
     }
 }

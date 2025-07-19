@@ -12,7 +12,8 @@ class Document extends Model
 
     protected $fillable = [
         'user_id',
-        'client_name',
+        'client_id',        // NEW: Link to client
+        'client_name',      // Keep for backward compatibility
         'document_name',
         'original_filename',
         'file_path',
@@ -53,6 +54,10 @@ class Document extends Model
     {
         return $this->belongsTo(User::class);
     }
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
 
     // Scopes
     public function scopeByCategory($query, $category)
@@ -60,9 +65,27 @@ class Document extends Model
         return $query->where('category', $category);
     }
 
-    public function scopeByClient($query, $clientName)
+    public function scopeByClient($query, $clientValue)
     {
-        return $query->where('client_name', 'like', '%' . $clientName . '%');
+        if (is_numeric($clientValue)) {
+            // Search by client ID
+            return $query->where('client_id', $clientValue);
+        } else {
+            // Search by client name (backward compatibility)
+            return $query->where('client_name', 'like', "%{$clientValue}%");
+        }
+    }
+
+    public function scopeByClientId($query, $clientId)
+    {
+        return $query->where('client_id', $clientId);
+    }
+    public function getClientDisplayNameAttribute()
+    {
+        if ($this->client) {
+            return $this->client->display_name;
+        }
+        return $this->client_name; // Fallback for old records
     }
 
     public function scopeByStatus($query, $status)
@@ -72,11 +95,11 @@ class Document extends Model
 
     public function scopeSearch($query, $search)
     {
-        return $query->where(function($q) use ($search) {
+        return $query->where(function ($q) use ($search) {
             $q->where('document_name', 'like', '%' . $search . '%')
-              ->orWhere('client_name', 'like', '%' . $search . '%')
-              ->orWhere('description', 'like', '%' . $search . '%')
-              ->orWhere('tags', 'like', '%' . $search . '%');
+                ->orWhere('client_name', 'like', '%' . $search . '%')
+                ->orWhere('description', 'like', '%' . $search . '%')
+                ->orWhere('tags', 'like', '%' . $search . '%');
         });
     }
 
@@ -84,7 +107,7 @@ class Document extends Model
     public function getFormattedFileSizeAttribute()
     {
         $bytes = $this->file_size;
-        
+
         if ($bytes >= 1073741824) {
             return number_format($bytes / 1073741824, 2) . ' GB';
         } elseif ($bytes >= 1048576) {

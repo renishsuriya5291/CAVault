@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Documents from './pages/Documents';
+import Clients from './pages/Clients';
 import Upload from './pages/Upload';
 import Search from './pages/Search';
 import Settings from './pages/Settings';
@@ -20,6 +21,7 @@ import { withAuth } from './hooks/useAuth';
 // Wrap protected components
 const ProtectedDashboard = withAuth(Dashboard);
 const ProtectedDocuments = withAuth(Documents);
+const ProtectedClients = withAuth(Clients);
 const ProtectedUpload = withAuth(Upload);
 const ProtectedSearch = withAuth(Search);
 const ProtectedSettings = withAuth(Settings);
@@ -41,6 +43,7 @@ function App() {
             {/* Protected Routes */}
             <Route path="/dashboard" element={<ProtectedDashboard />} />
             <Route path="/documents" element={<ProtectedDocuments />} />
+            <Route path="/clients" element={<ProtectedClients />} />
             <Route path="/upload" element={<ProtectedUpload />} />
             <Route path="/search" element={<ProtectedSearch />} />
             <Route path="/settings" element={<ProtectedSettings />} />

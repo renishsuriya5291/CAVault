@@ -10,12 +10,14 @@ import {
   Search, 
   Settings, 
   HelpCircle,
-  Shield
+  Shield,
+  Users
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/documents', icon: FileText },
+  { name: 'Clients', href: '/clients', icon: Users }, 
   { name: 'Upload', href: '/upload', icon: Upload },
   { name: 'Search', href: '/search', icon: Search },
   { name: 'Settings', href: '/settings', icon: Settings },

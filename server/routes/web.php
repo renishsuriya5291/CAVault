@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\ClientController;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,7 +23,7 @@ Route::get('/', function () {
 
 // API routes (CSRF excluded via bootstrap/app.php)
 Route::prefix('api')->group(function () {
-    
+
     // Public routes (no authentication required)
     Route::prefix('auth')->group(function () {
         Route::post('/register', [AuthController::class, 'register']);
@@ -34,7 +35,19 @@ Route::prefix('api')->group(function () {
 
     // Protected routes (authentication required)
     Route::middleware('auth:sanctum')->group(function () {
-        
+
+
+        // Client management routes
+        Route::prefix('clients')->name('api.clients.')->group(function () {
+            Route::get('/', [ClientController::class, 'index'])->name('index');
+            Route::post('/', [ClientController::class, 'store'])->name('store');
+            Route::get('/options', [ClientController::class, 'options'])->name('options');
+            Route::get('/{id}', [ClientController::class, 'show'])->name('show');
+            Route::put('/{id}', [ClientController::class, 'update'])->name('update');
+            Route::delete('/{id}', [ClientController::class, 'destroy'])->name('destroy');
+            Route::post('/{id}/transfer-documents', [ClientController::class, 'transferDocuments'])->name('transfer-documents');
+        });
+
         // Auth routes
         Route::prefix('auth')->group(function () {
             Route::get('/user', [AuthController::class, 'user']);
@@ -49,14 +62,14 @@ Route::prefix('api')->group(function () {
             Route::get('/', [DocumentController::class, 'index'])->name('index');
             Route::post('/', [DocumentController::class, 'store'])->name('store');
             Route::delete('/{id}', [DocumentController::class, 'destroy'])->name('destroy');
-            
+
             // Download routes (protected)
             Route::get('/{id}/download', [DocumentController::class, 'download'])->name('download');
-            
+
             // Dashboard and analytics
             Route::get('/stats', [DocumentController::class, 'stats'])->name('stats');
             Route::get('/recent', [DocumentController::class, 'recent'])->name('recent');
-            
+
             // Search and filtering
             Route::get('/search', [DocumentController::class, 'search'])->name('search');
             Route::get('/categories', [DocumentController::class, 'categories'])->name('categories');
@@ -66,11 +79,11 @@ Route::prefix('api')->group(function () {
         Route::prefix('dashboard')->name('api.dashboard.')->group(function () {
             Route::get('/stats', [DocumentController::class, 'stats'])->name('stats');
             Route::get('/recent-documents', [DocumentController::class, 'recent'])->name('recent-documents');
-            Route::get('/recent-activity', function() {
+            Route::get('/recent-activity', function () {
                 $user = request()->user();
                 $documentService = app(\App\Services\DocumentService::class);
                 $activity = $documentService->getRecentActivity($user);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $activity
@@ -80,11 +93,11 @@ Route::prefix('api')->group(function () {
 
         // Storage management routes
         Route::prefix('storage')->name('api.storage.')->group(function () {
-            Route::get('/stats', function() {
+            Route::get('/stats', function () {
                 $user = request()->user();
                 $documentService = app(\App\Services\DocumentService::class);
                 $stats = $documentService->getStorageStats($user);
-                
+
                 return response()->json([
                     'success' => true,
                     'data' => $stats

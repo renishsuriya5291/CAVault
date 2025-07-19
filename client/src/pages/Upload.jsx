@@ -8,6 +8,8 @@ import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Progress } from '../components/ui/progress';
 import { Alert, AlertDescription } from '../components/ui/alert';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { Textarea } from '../components/ui/textarea';
 import {
   Upload as UploadIcon,
   FileText,
@@ -21,52 +23,77 @@ import {
   Plus,
   Loader2,
   RefreshCw,
-  ArrowLeft
+  ArrowLeft,
+  Users,
+  Building2,
+  UserPlus
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import Header from '../components/layout/Header';
 import Sidebar from '../components/layout/Sidebar';
-import { documentsAPI, handleApiError } from '../services/api';
+import { documentsAPI, clientsAPI, handleApiError } from '../services/api';
 
 const Upload = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
+
   // File management state
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState({});
   const [uploadingFiles, setUploadingFiles] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [uploadResults, setUploadResults] = useState([]);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     category: '',
-    client_name: '',
+    client_id: '', // UPDATED: Changed from client_name to client_id
     description: '',
     tags: ''
   });
-  
-  // Categories state
+
+  // Categories and clients state
   const [categories, setCategories] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
-  
+  const [loadingClients, setLoadingClients] = useState(true);
+
   // Error and success state
   const [error, setError] = useState(null);
   const [successCount, setSuccessCount] = useState(0);
   const [failureCount, setFailureCount] = useState(0);
 
-  // Fetch categories on component mount
+  // NEW: Client creation modal state
+  const [showClientModal, setShowClientModal] = useState(false);
+  const [clientFormData, setClientFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    company_name: '',
+    gst_number: '',
+    pan_number: '',
+    address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    country: 'India',
+    status: 'active'
+  });
+  const [clientFormLoading, setClientFormLoading] = useState(false);
+  const [clientFormErrors, setClientFormErrors] = useState({});
+
+  // Fetch data on component mount
   useEffect(() => {
     fetchCategories();
+    fetchClients();
   }, []);
 
   const fetchCategories = async () => {
     try {
       setLoadingCategories(true);
       const response = await documentsAPI.getCategories();
-      
+
       if (response.data.success) {
         setCategories(response.data.data);
       } else {
@@ -88,6 +115,92 @@ const Upload = () => {
     } finally {
       setLoadingCategories(false);
     }
+  };
+
+  // NEW: Fetch client options
+  const fetchClients = async () => {
+    try {
+      setLoadingClients(true);
+      const response = await clientsAPI.getClientOptions();
+      if (response.data.success) {
+        setClients(response.data.data || []);
+      } else {
+        throw new Error('Failed to fetch clients');
+      }
+    } catch (error) {
+      console.error('Error fetching clients:', error);
+      setError('Failed to load clients. You can still upload by creating a new client.');
+      setClients([]);
+    } finally {
+      setLoadingClients(false);
+    }
+  };
+
+  // NEW: Handle client creation
+  const handleCreateClient = async (e) => {
+    e.preventDefault();
+    setClientFormLoading(true);
+    setClientFormErrors({});
+
+    try {
+      const response = await clientsAPI.createClient(clientFormData);
+
+      if (response.data.success) {
+        // Add new client to the list
+        const newClient = {
+          value: response.data.data.id,
+          label: response.data.data.company_name
+            ? `${response.data.data.name} (${response.data.data.company_name})`
+            : response.data.data.name
+        };
+        setClients(prev => [...prev, newClient]);
+
+        // Select the new client
+        setFormData(prev => ({ ...prev, client_id: response.data.data.id }));
+
+        // Close modal and reset form
+        setShowClientModal(false);
+        resetClientForm();
+
+        // Show success message
+        setError(null);
+      } else {
+        if (response.data.errors) {
+          setClientFormErrors(response.data.errors);
+        } else {
+          throw new Error(response.data.message || 'Failed to create client');
+        }
+      }
+    } catch (error) {
+      console.error('Error creating client:', error);
+      const errorInfo = handleApiError(error);
+      if (errorInfo.errors) {
+        setClientFormErrors(errorInfo.errors);
+      } else {
+        setError(errorInfo.message);
+      }
+    } finally {
+      setClientFormLoading(false);
+    }
+  };
+
+  // NEW: Reset client form
+  const resetClientForm = () => {
+    setClientFormData({
+      name: '',
+      email: '',
+      phone: '',
+      company_name: '',
+      gst_number: '',
+      pan_number: '',
+      address: '',
+      city: '',
+      state: '',
+      pincode: '',
+      country: 'India',
+      status: 'active'
+    });
+    setClientFormErrors({});
   };
 
   // Drag and drop handlers
@@ -141,7 +254,7 @@ const Upload = () => {
       }
 
       // Check for duplicates
-      const isDuplicate = selectedFiles.some(existingFile => 
+      const isDuplicate = selectedFiles.some(existingFile =>
         existingFile.file.name === file.name && existingFile.file.size === file.size
       );
 
@@ -219,13 +332,14 @@ const Upload = () => {
     if (selectedFiles.length === 0) {
       errors.push('Please select at least one file to upload.');
     }
-    
+
     if (!formData.category) {
       errors.push('Please select a document category.');
     }
-    
-    if (!formData.client_name.trim()) {
-      errors.push('Please enter the client name.');
+
+    // UPDATED: Validate client_id instead of client_name
+    if (!formData.client_id) {
+      errors.push('Please select a client.');
     }
 
     if (errors.length > 0) {
@@ -242,13 +356,13 @@ const Upload = () => {
       // Create FormData for the file upload
       const uploadFormData = new FormData();
       uploadFormData.append('file', fileItem.file);
-      uploadFormData.append('client_name', formData.client_name.trim());
+      uploadFormData.append('client_id', formData.client_id); // UPDATED: Use client_id
       uploadFormData.append('category', formData.category);
-      
+
       if (formData.description.trim()) {
         uploadFormData.append('description', formData.description.trim());
       }
-      
+
       if (formData.tags.trim()) {
         uploadFormData.append('tags', formData.tags.trim());
       }
@@ -261,7 +375,7 @@ const Upload = () => {
       if (response.data.success) {
         // Complete the progress
         setUploadProgress(prev => ({ ...prev, [fileItem.id]: 100 }));
-        
+
         // Update file status
         setSelectedFiles(prev =>
           prev.map(file =>
@@ -286,7 +400,7 @@ const Upload = () => {
       }
     } catch (error) {
       console.error('Upload error for file:', fileItem.name, error);
-      
+
       // Update file status to error
       setSelectedFiles(prev =>
         prev.map(file =>
@@ -342,17 +456,17 @@ const Upload = () => {
       // Calculate results
       const successful = results.filter(r => r.success).length;
       const failed = results.filter(r => !r.success).length;
-      
+
       setSuccessCount(successful);
       setFailureCount(failed);
 
       // Show results and redirect if all successful
       if (failed === 0) {
         setTimeout(() => {
-          navigate('/documents', { 
-            state: { 
-              uploadSuccess: true, 
-              uploadedCount: successful 
+          navigate('/documents', {
+            state: {
+              uploadSuccess: true,
+              uploadedCount: successful
             }
           });
         }, 2000);
@@ -382,7 +496,7 @@ const Upload = () => {
     setError(null);
     setFormData({
       category: '',
-      client_name: '',
+      client_id: '', // UPDATED: Reset client_id
       description: '',
       tags: ''
     });
@@ -460,20 +574,18 @@ const Upload = () => {
                 </CardHeader>
                 <CardContent>
                   <div
-                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                      dragActive
+                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dragActive
                         ? 'border-ca-primary bg-blue-50'
                         : 'border-gray-300 hover:border-ca-primary hover:bg-gray-50'
-                    }`}
+                      }`}
                     onDragEnter={handleDrag}
                     onDragLeave={handleDrag}
                     onDragOver={handleDrag}
                     onDrop={handleDrop}
                   >
                     <div className="flex flex-col items-center">
-                      <UploadIcon className={`w-12 h-12 mb-4 ${
-                        dragActive ? 'text-ca-primary' : 'text-ca-neutral'
-                      }`} />
+                      <UploadIcon className={`w-12 h-12 mb-4 ${dragActive ? 'text-ca-primary' : 'text-ca-neutral'
+                        }`} />
                       <h3 className="text-lg font-semibold text-ca-dark mb-2">
                         {dragActive ? 'Drop files here' : 'Upload Documents'}
                       </h3>
@@ -489,8 +601,8 @@ const Upload = () => {
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif"
                         disabled={uploadingFiles}
                       />
-                      <Button 
-                        asChild 
+                      <Button
+                        asChild
                         className="bg-ca-primary hover:bg-blue-700"
                         disabled={uploadingFiles}
                       >
@@ -604,9 +716,8 @@ const Upload = () => {
                   <CardContent>
                     <div className="space-y-2">
                       {uploadResults.map((result, index) => (
-                        <div key={index} className={`flex items-center gap-3 p-2 rounded ${
-                          result.success ? 'bg-green-50' : 'bg-red-50'
-                        }`}>
+                        <div key={index} className={`flex items-center gap-3 p-2 rounded ${result.success ? 'bg-green-50' : 'bg-red-50'
+                          }`}>
                           {result.success ? (
                             <CheckCircle className="w-4 h-4 text-green-600" />
                           ) : (
@@ -666,15 +777,85 @@ const Upload = () => {
                     )}
                   </div>
 
+                  {/* UPDATED: Client Selection */}
                   <div>
-                    <Label htmlFor="client_name">Client Name *</Label>
-                    <Input
-                      id="client_name"
-                      placeholder="Enter client name"
-                      value={formData.client_name}
-                      onChange={(e) => handleFormChange('client_name', e.target.value)}
-                      disabled={uploadingFiles}
-                    />
+                    <Label htmlFor="client_id">Client *</Label>
+                    {loadingClients ? (
+                      <div className="flex items-center gap-2 py-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-sm text-ca-neutral">Loading clients...</span>
+                      </div>
+                    ) : clients.length === 0 ? (
+                      <div className="space-y-2">
+                        <div className="p-4 border border-yellow-200 bg-yellow-50 rounded-lg">
+                          <p className="text-sm text-yellow-800 mb-2">
+                            No clients found. Create a new client to proceed.
+                          </p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => setShowClientModal(true)}
+                            className="bg-ca-primary hover:bg-blue-700"
+                          >
+                            <UserPlus className="w-4 h-4 mr-2" />
+                            Create New Client
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Select
+                            value={formData.client_id}
+                            onValueChange={(value) => handleFormChange('client_id', value)}
+                            disabled={uploadingFiles}
+                          >
+                            <SelectTrigger className="flex-1">
+                              <SelectValue placeholder="Select a client" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {clients.map(client => (
+                                <SelectItem key={client.value} value={client.value}>
+                                  {client.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setShowClientModal(true)}
+                            disabled={uploadingFiles}
+                            title="Add new client"
+                          >
+                            <UserPlus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={fetchClients}
+                            disabled={loadingClients}
+                            className="text-xs"
+                          >
+                            <RefreshCw className={`w-3 h-3 mr-1 ${loadingClients ? 'animate-spin' : ''}`} />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate('/clients')}
+                            className="text-xs"
+                          >
+                            <Users className="w-3 h-3 mr-1" />
+                            Manage Clients
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -709,7 +890,7 @@ const Upload = () => {
                 <CardContent className="p-6">
                   <Button
                     onClick={handleUpload}
-                    disabled={uploadingFiles || selectedFiles.length === 0 || !formData.category || !formData.client_name.trim()}
+                    disabled={uploadingFiles || selectedFiles.length === 0 || !formData.category || !formData.client_id}
                     className="w-full bg-ca-primary hover:bg-blue-700 disabled:opacity-50"
                     size="lg"
                   >
@@ -795,11 +976,11 @@ const Upload = () => {
                     <li>• Add relevant tags for easy searching</li>
                     <li>• Keep file sizes under 50MB</li>
                     <li>• Ensure files are not corrupted</li>
-                    <li>• Include client name for organization</li>
+                    <li>• Select the correct client</li>
                   </ul>
                 </div>
               </div>
-              
+
               <div className="mt-4 pt-4 border-t border-gray-200">
                 <h4 className="font-medium text-ca-dark mb-2">Security Features</h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-ca-neutral">
@@ -819,6 +1000,184 @@ const Upload = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Client Creation Modal */}
+          <Dialog open={showClientModal} onOpenChange={setShowClientModal}>
+            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Building2 className="w-5 h-5 text-ca-primary" />
+                  Create New Client
+                </DialogTitle>
+                <DialogDescription>
+                  Add a new client to organize your documents. Fields marked with * are required.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleCreateClient} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="client_name">Name *</Label>
+                    <Input
+                      id="client_name"
+                      value={clientFormData.name}
+                      onChange={(e) => setClientFormData({ ...clientFormData, name: e.target.value })}
+                      placeholder="Client full name"
+                      className={clientFormErrors.name ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.name && <p className="text-xs text-red-500">{clientFormErrors.name[0]}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client_company_name">Company Name</Label>
+                    <Input
+                      id="client_company_name"
+                      value={clientFormData.company_name}
+                      onChange={(e) => setClientFormData({ ...clientFormData, company_name: e.target.value })}
+                      placeholder="Company name"
+                      className={clientFormErrors.company_name ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.company_name && <p className="text-xs text-red-500">{clientFormErrors.company_name[0]}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="client_email">Email</Label>
+                    <Input
+                      id="client_email"
+                      type="email"
+                      value={clientFormData.email}
+                      onChange={(e) => setClientFormData({ ...clientFormData, email: e.target.value })}
+                      placeholder="client@example.com"
+                      className={clientFormErrors.email ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.email && <p className="text-xs text-red-500">{clientFormErrors.email[0]}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client_phone">Phone</Label>
+                    <Input
+                      id="client_phone"
+                      value={clientFormData.phone}
+                      onChange={(e) => setClientFormData({ ...clientFormData, phone: e.target.value })}
+                      placeholder="+91 9876543210"
+                      className={clientFormErrors.phone ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.phone && <p className="text-xs text-red-500">{clientFormErrors.phone[0]}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="client_gst_number">GST Number</Label>
+                    <Input
+                      id="client_gst_number"
+                      value={clientFormData.gst_number}
+                      onChange={(e) => setClientFormData({ ...clientFormData, gst_number: e.target.value.toUpperCase() })}
+                      placeholder="22AAAAA0000A1Z5"
+                      className={clientFormErrors.gst_number ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.gst_number && <p className="text-xs text-red-500">{clientFormErrors.gst_number[0]}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client_pan_number">PAN Number</Label>
+                    <Input
+                      id="client_pan_number"
+                      value={clientFormData.pan_number}
+                      onChange={(e) => setClientFormData({ ...clientFormData, pan_number: e.target.value.toUpperCase() })}
+                      placeholder="ABCDE1234F"
+                      className={clientFormErrors.pan_number ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.pan_number && <p className="text-xs text-red-500">{clientFormErrors.pan_number[0]}</p>}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="client_address">Address</Label>
+                  <Textarea
+                    id="client_address"
+                    value={clientFormData.address}
+                    onChange={(e) => setClientFormData({ ...clientFormData, address: e.target.value })}
+                    placeholder="Complete address"
+                    rows={2}
+                    className={clientFormErrors.address ? 'border-red-500' : ''}
+                  />
+                  {clientFormErrors.address && <p className="text-xs text-red-500">{clientFormErrors.address[0]}</p>}
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="client_city">City</Label>
+                    <Input
+                      id="client_city"
+                      value={clientFormData.city}
+                      onChange={(e) => setClientFormData({ ...clientFormData, city: e.target.value })}
+                      placeholder="City"
+                      className={clientFormErrors.city ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.city && <p className="text-xs text-red-500">{clientFormErrors.city[0]}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client_state">State</Label>
+                    <Input
+                      id="client_state"
+                      value={clientFormData.state}
+                      onChange={(e) => setClientFormData({ ...clientFormData, state: e.target.value })}
+                      placeholder="State"
+                      className={clientFormErrors.state ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.state && <p className="text-xs text-red-500">{clientFormErrors.state[0]}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client_pincode">Pincode</Label>
+                    <Input
+                      id="client_pincode"
+                      value={clientFormData.pincode}
+                      onChange={(e) => setClientFormData({ ...clientFormData, pincode: e.target.value })}
+                      placeholder="123456"
+                      className={clientFormErrors.pincode ? 'border-red-500' : ''}
+                    />
+                    {clientFormErrors.pincode && <p className="text-xs text-red-500">{clientFormErrors.pincode[0]}</p>}
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setShowClientModal(false);
+                      resetClientForm();
+                    }}
+                    disabled={clientFormLoading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={clientFormLoading || !clientFormData.name.trim()}
+                    className="bg-ca-primary hover:bg-blue-700"
+                  >
+                    {clientFormLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-4 h-4 mr-2" />
+                        Create Client
+                      </>
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </main>
     </div>

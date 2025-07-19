@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 // Configure base URL - centralized configuration
-const API_BASE_URL =  'http://localhost:8000/api';
+const API_BASE_URL = 'http://localhost:8000/api';
 
 // Create axios instance
 const api = axios.create({
@@ -72,12 +72,41 @@ export const authAPI = {
   changePassword: (passwordData) => api.post('/auth/change-password', passwordData),
 };
 
-// Documents API methods
+// CLIENT API METHODS (NEW)
+export const clientsAPI = {
+  // Get all clients with optional filters
+  getClients: (params = {}) => api.get('/clients', { params }),
+  
+  // Create new client
+  createClient: (clientData) => api.post('/clients', clientData),
+  
+  // Get client by ID
+  getClient: (id) => api.get(`/clients/${id}`),
+  
+  // Update client
+  updateClient: (id, clientData) => api.put(`/clients/${id}`, clientData),
+  
+  // Delete client
+  deleteClient: (id) => api.delete(`/clients/${id}`),
+  
+  // Get client options for dropdowns
+  getClientOptions: () => api.get('/clients/options'),
+  
+  // Transfer documents between clients
+  transferDocuments: (fromClientId, toClientId) => api.post(`/clients/${fromClientId}/transfer-documents`, {
+    target_client_id: toClientId
+  }),
+  
+  // Search clients
+  searchClients: (params = {}) => api.get('/clients', { params }),
+};
+
+// Documents API methods (UPDATED)
 export const documentsAPI = {
   // Get all documents with optional filters
   getDocuments: (params = {}) => api.get('/documents', { params }),
   
-  // Upload document
+  // Upload document (UPDATED to support client_id)
   uploadDocument: (formData) => api.post('/documents', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
@@ -160,6 +189,36 @@ export const handleApiError = (error) => {
       status: null,
     };
   }
+};
+
+// CLIENT HELPER FUNCTIONS (NEW)
+export const clientHelpers = {
+  // Format client display name
+  formatClientName: (client) => {
+    if (!client) return 'Unknown Client';
+    return client.company_name ? `${client.name} (${client.company_name})` : client.name;
+  },
+  
+  // Format client address
+  formatClientAddress: (client) => {
+    if (!client) return '';
+    const parts = [client.address, client.city, client.state, client.pincode].filter(Boolean);
+    return parts.join(', ');
+  },
+  
+  // Validate GST number format
+  validateGSTNumber: (gstNumber) => {
+    if (!gstNumber) return true; // Optional field
+    const gstPattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+    return gstPattern.test(gstNumber);
+  },
+  
+  // Validate PAN number format
+  validatePANNumber: (panNumber) => {
+    if (!panNumber) return true; // Optional field
+    const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+    return panPattern.test(panNumber);
+  },
 };
 
 // Export the configured axios instance as default

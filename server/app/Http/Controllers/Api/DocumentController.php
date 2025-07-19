@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Models\Client;
 use App\Services\DocumentService;
 use App\Services\EncryptionService;
 use Illuminate\Http\Request;
@@ -107,10 +108,10 @@ class DocumentController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
-            // Validate request
+            // Updated validation
             $validator = Validator::make($request->all(), [
-                'file' => 'required|file|max:51200|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png,gif', // 50MB max
-                'client_name' => 'required|string|max:255',
+                'file' => 'required|file|max:51200|mimes:pdf,doc,docx,xls,xlsx,jpg,jpeg,png,gif',
+                'client_id' => 'required|exists:clients,id', // Changed to client_id
                 'category' => 'required|string|in:Tax Returns,Financial Statements,Audit Reports,GST Returns,Service Agreements,Invoice Templates,Legal Documents,Other',
                 'description' => 'nullable|string|max:1000',
                 'tags' => 'nullable|string',
@@ -127,16 +128,22 @@ class DocumentController extends Controller
             $file = $request->file('file');
             $user = $request->user();
 
+            // Verify client belongs to user
+            $client = Client::where('id', $request->client_id)
+                ->where('user_id', $user->id)
+                ->firstOrFail();
+
             // Process tags
             $tags = [];
             if ($request->filled('tags')) {
                 $tags = array_map('trim', explode(',', $request->tags));
-                $tags = array_filter($tags); // Remove empty tags
+                $tags = array_filter($tags);
             }
 
             // Upload and encrypt document
             $documentData = $this->documentService->uploadDocument($file, $user, [
-                'client_name' => $request->client_name,
+                'client_id' => $client->id,           // NEW: Pass client ID
+                'client_name' => $client->name,       // Keep for backward compatibility
                 'category' => $request->category,
                 'description' => $request->description,
                 'tags' => $tags,
@@ -347,14 +354,36 @@ class DocumentController extends Controller
             $categories = Document::where('user_id', $user->id)
                 ->select('category')
                 ->groupBy('category')
-                ->pluck('category')
-                ->map(function ($category) {
+                ->pluck('category');
+
+            if ($categories->isEmpty()) {
+                $defaultCategories = [
+                    'Tax Returns',
+                    'Financial Statements',
+                    'Audit Reports',
+                    'GST Returns',
+                    'Service Agreements',
+                    'Invoice Templates',
+                    'Legal Documents',
+                    'Other'
+                ];
+
+                $categories = collect($defaultCategories)->map(function ($category) {
+                    return [
+                        'value' => $category,
+                        'label' => $category,
+                        'count' => 0
+                    ];
+                });
+            } else {
+                $categories = $categories->map(function ($category) {
                     return [
                         'value' => $category,
                         'label' => $category,
                         'count' => Document::where('category', $category)->count()
                     ];
                 });
+            }
 
             return response()->json([
                 'success' => true,
@@ -368,6 +397,7 @@ class DocumentController extends Controller
             ], 500);
         }
     }
+
 
     /**
      * Get document statistics for user
