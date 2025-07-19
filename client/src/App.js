@@ -8,13 +8,22 @@ import ToasterProvider from './components/ToasterProvider';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-// import other pages...
+import Documents from './pages/Documents';
+import Upload from './pages/Upload';
+import Search from './pages/Search';
+import Settings from './pages/Settings';
+import Help from './pages/Help';
 
 // Protected Route wrapper
 import { withAuth } from './hooks/useAuth';
 
 // Wrap protected components
 const ProtectedDashboard = withAuth(Dashboard);
+const ProtectedDocuments = withAuth(Documents);
+const ProtectedUpload = withAuth(Upload);
+const ProtectedSearch = withAuth(Search);
+const ProtectedSettings = withAuth(Settings);
+const ProtectedHelp = withAuth(Help);
 
 function App() {
   return (
@@ -31,6 +40,11 @@ function App() {
             
             {/* Protected Routes */}
             <Route path="/dashboard" element={<ProtectedDashboard />} />
+            <Route path="/documents" element={<ProtectedDocuments />} />
+            <Route path="/upload" element={<ProtectedUpload />} />
+            <Route path="/search" element={<ProtectedSearch />} />
+            <Route path="/settings" element={<ProtectedSettings />} />
+            <Route path="/help" element={<ProtectedHelp />} />
             
             {/* Default redirect */}
             <Route path="/" element={<Navigate to="/dashboard" replace />} />

@@ -8,6 +8,46 @@ import { useAuth } from '../../hooks/useAuth';
 const Header = ({ onMenuClick }) => {
   const { auth, logout } = useAuth();
 
+  // Helper function to get user initials
+  const getUserInitials = (user) => {
+    if (!user) return 'U'; // Default fallback
+    
+    // Try different user properties that might contain the name
+    const name = user.name || user.username || user.email || user.firstName || '';
+    
+    if (name) {
+      // If it's an email, extract the part before @
+      if (name.includes('@')) {
+        const emailName = name.split('@')[0];
+        return emailName.charAt(0).toUpperCase();
+      }
+      
+      // If it has spaces (first name last name), get first letter of each
+      if (name.includes(' ')) {
+        const parts = name.trim().split(' ');
+        return (parts[0].charAt(0) + (parts[1]?.charAt(0) || '')).toUpperCase();
+      }
+      
+      // Just get the first character
+      return name.charAt(0).toUpperCase();
+    }
+    
+    return 'U'; // Ultimate fallback
+  };
+
+  // Helper function to get display name
+  const getDisplayName = (user) => {
+    if (!user) return 'User';
+    
+    return user.name || 
+           user.username || 
+           user.firstName || 
+           (user.email ? user.email.split('@')[0] : 'User');
+  };
+
+  const userInitials = getUserInitials(auth.user);
+  const displayName = getDisplayName(auth.user);
+
   return (
     <header className="fixed top-0 right-0 left-0 z-50 bg-white border-b border-gray-200 ca-shadow">
       <div className="flex items-center justify-between px-4 py-3">
@@ -21,7 +61,7 @@ const Header = ({ onMenuClick }) => {
             <Menu className="h-5 w-5" />
           </Button>
           <div className="hidden lg:block">
-            <h1 className="text-xl font-semibold text-ca-dark">CA Document Portal</h1>
+            <h1 className="text-xl font-semibold text-ca-dark">CA Vault</h1>
           </div>
         </div>
 
@@ -35,12 +75,12 @@ const Header = ({ onMenuClick }) => {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="flex items-center gap-2 p-2">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback className="bg-ca-primary text-white text-sm">
-                    {auth.user?.name?.charAt(0).toUpperCase()}
+                  <AvatarFallback className="bg-ca-primary text-white text-sm font-semibold">
+                    {userInitials}
                   </AvatarFallback>
                 </Avatar>
                 <span className="hidden md:block text-sm font-medium">
-                  {auth.user?.name}
+                  {displayName}
                 </span>
               </Button>
             </DropdownMenuTrigger>
