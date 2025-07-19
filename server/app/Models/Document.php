@@ -12,26 +12,40 @@ class Document extends Model
 
     protected $fillable = [
         'user_id',
-        'original_name',
-        'file_name',
+        'client_name',
+        'document_name',
+        'original_filename',
         'file_path',
-        'mime_type',
         'file_size',
+        'file_type',
+        'mime_type',
         'category',
         'description',
-        'metadata',
+        'tags',
         'encryption_key',
-        'encryption_method',
-        'file_hash',
         'status',
-        'uploaded_at',
-        'last_accessed_at',
+        'upload_date',
+        'processed_at',
+        'metadata'
     ];
 
     protected $casts = [
+        'tags' => 'array',
         'metadata' => 'array',
-        'uploaded_at' => 'datetime',
-        'last_accessed_at' => 'datetime',
+        'upload_date' => 'datetime',
+        'processed_at' => 'datetime',
+        'file_size' => 'integer'
+    ];
+
+    protected $dates = [
+        'upload_date',
+        'processed_at',
+        'deleted_at'
+    ];
+
+    protected $hidden = [
+        'encryption_key',
+        'file_path'
     ];
 
     // Relationships
@@ -40,38 +54,96 @@ class Document extends Model
         return $this->belongsTo(User::class);
     }
 
-    // Accessors
-    public function getFileSizeHumanAttribute()
-    {
-        $bytes = $this->file_size;
-        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        
-        for ($i = 0; $bytes > 1024; $i++) {
-            $bytes /= 1024;
-        }
-        
-        return round($bytes, 2) . ' ' . $units[$i];
-    }
-
     // Scopes
     public function scopeByCategory($query, $category)
     {
         return $query->where('category', $category);
     }
 
-    public function scopeReady($query)
+    public function scopeByClient($query, $clientName)
     {
-        return $query->where('status', 'ready');
+        return $query->where('client_name', 'like', '%' . $clientName . '%');
     }
 
-    // Helper methods
-    public function isReady()
+    public function scopeByStatus($query, $status)
     {
-        return $this->status === 'ready';
+        return $query->where('status', $status);
     }
 
-    public function markAsAccessed()
+    public function scopeSearch($query, $search)
     {
-        $this->update(['last_accessed_at' => now()]);
+        return $query->where(function($q) use ($search) {
+            $q->where('document_name', 'like', '%' . $search . '%')
+              ->orWhere('client_name', 'like', '%' . $search . '%')
+              ->orWhere('description', 'like', '%' . $search . '%')
+              ->orWhere('tags', 'like', '%' . $search . '%');
+        });
+    }
+
+    // Accessors
+    public function getFormattedFileSizeAttribute()
+    {
+        $bytes = $this->file_size;
+        
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 2) . ' GB';
+        } elseif ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 2) . ' MB';
+        } elseif ($bytes >= 1024) {
+            return number_format($bytes / 1024, 2) . ' KB';
+        } else {
+            return $bytes . ' bytes';
+        }
+    }
+
+    public function getUploadedTimeAgoAttribute()
+    {
+        return $this->upload_date->diffForHumans();
+    }
+
+    public function getStatusBadgeAttribute()
+    {
+        $statusMap = [
+            'completed' => ['class' => 'bg-green-100 text-green-800', 'label' => 'Completed'],
+            'processing' => ['class' => 'bg-yellow-100 text-yellow-800', 'label' => 'Processing'],
+            'review' => ['class' => 'bg-orange-100 text-orange-800', 'label' => 'Review'],
+            'failed' => ['class' => 'bg-red-100 text-red-800', 'label' => 'Failed'],
+        ];
+
+        return $statusMap[$this->status] ?? ['class' => 'bg-gray-100 text-gray-800', 'label' => 'Unknown'];
+    }
+
+    // Methods
+    public function getDownloadUrl()
+    {
+        // FIXED: Use the correct route name with proper URL generation
+        return url('/api/documents/' . $this->id . '/download');
+    }
+
+    public function canBeAccessedBy(User $user)
+    {
+        return $this->user_id === $user->id;
+    }
+
+    public function markAsProcessed()
+    {
+        $this->update([
+            'status' => 'completed',
+            'processed_at' => now()
+        ]);
+    }
+
+    public function markAsProcessing()
+    {
+        $this->update([
+            'status' => 'processing'
+        ]);
+    }
+
+    public function markAsFailed()
+    {
+        $this->update([
+            'status' => 'failed'
+        ]);
     }
 }

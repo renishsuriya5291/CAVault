@@ -2,16 +2,21 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
+// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable implements MustVerifyEmail
+class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasFactory, Notifiable, HasApiTokens;
 
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
     protected $fillable = [
         'name',
         'email',
@@ -19,58 +24,97 @@ class User extends Authenticatable implements MustVerifyEmail
         'ca_license_number',
         'firm_name',
         'phone',
-        'address',
-        'city',
-        'state',
-        'country',
-        'postal_code',
-        'account_status',
-        'terms_accepted',
-        'terms_accepted_at',
+        'business_address',
+        'timezone',
+        'is_active',
+        'last_login_at',
     ];
 
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'terms_accepted' => 'boolean',
-        'terms_accepted_at' => 'datetime',
-        'password' => 'hashed',
-    ];
+    /**
+     * Get the attributes that should be cast.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'last_login_at' => 'datetime',
+            'password' => 'hashed',
+            'is_active' => 'boolean',
+        ];
+    }
 
-    // Relationships
+    /**
+     * Relationships
+     */
     public function documents()
     {
         return $this->hasMany(Document::class);
     }
 
-    public function activityLogs()
+    /**
+     * Scopes
+     */
+    public function scopeActive($query)
     {
-        return $this->hasMany(ActivityLog::class);
+        return $query->where('is_active', true);
     }
 
-    // Accessors & Mutators
-    public function getFullAddressAttribute()
+    /**
+     * Accessors
+     */
+    public function getFirstNameAttribute()
     {
-        return trim($this->address . ', ' . $this->city . ', ' . $this->state . ' ' . $this->postal_code);
+        return explode(' ', $this->name)[0];
     }
 
-    // Helper methods
-    public function isActive()
+    /**
+     * Methods
+     */
+    public function updateLastLogin()
     {
-        return $this->account_status === 'active';
+        $this->update(['last_login_at' => now()]);
     }
 
-    public function isPending()
+    public function getTotalDocuments()
     {
-        return $this->account_status === 'pending';
+        return $this->documents()->count();
     }
 
-    public function isSuspended()
+    public function getTotalStorageUsed()
     {
-        return $this->account_status === 'suspended';
+        return $this->documents()->sum('file_size');
+    }
+
+    public function getFormattedStorageUsed()
+    {
+        $bytes = $this->getTotalStorageUsed();
+        
+        if ($bytes >= 1073741824) {
+            return number_format($bytes / 1073741824, 2) . ' GB';
+        } elseif ($bytes >= 1048576) {
+            return number_format($bytes / 1048576, 2) . ' MB';
+        } elseif ($bytes >= 1024) {
+            return number_format($bytes / 1024, 2) . ' KB';
+        } else {
+            return $bytes . ' bytes';
+        }
+    }
+
+    public function getStorageUsagePercentage($limit = 107374182400) // 100GB default
+    {
+        $used = $this->getTotalStorageUsed();
+        return min(100, ($used / $limit) * 100);
     }
 }

@@ -6,36 +6,72 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
     {
         Schema::create('documents', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('original_name');
-            $table->string('file_name'); // Encrypted filename
-            $table->string('file_path'); // Path in Wasabi S3
+            
+            // Document Information
+            $table->string('client_name');
+            $table->string('document_name');
+            $table->string('original_filename');
+            $table->string('file_path');
+            $table->bigInteger('file_size');
+            $table->string('file_type', 10); // pdf, doc, xlsx, etc.
             $table->string('mime_type');
-            $table->bigInteger('file_size'); // in bytes
-            $table->string('category')->default('general'); // tax_returns, financial_statements, etc.
+            
+            // Categorization
+            $table->enum('category', [
+                'Tax Returns',
+                'Financial Statements', 
+                'Audit Reports',
+                'GST Returns',
+                'Service Agreements',
+                'Invoice Templates',
+                'Legal Documents',
+                'Other'
+            ])->default('Other');
+            
             $table->text('description')->nullable();
-            $table->json('metadata')->nullable(); // Additional file metadata
-            $table->string('encryption_key'); // Unique encryption key for this document
-            $table->string('encryption_method')->default('AES-256-CBC');
-            $table->string('file_hash'); // SHA256 hash for integrity check
-            $table->enum('status', ['uploading', 'encrypted', 'ready', 'error'])->default('uploading');
-            $table->timestamp('uploaded_at')->nullable();
-            $table->timestamp('last_accessed_at')->nullable();
-            $table->softDeletes(); // Soft delete for data recovery
+            $table->json('tags')->nullable(); // Store tags as JSON array
+            
+            // Security & Encryption
+            $table->text('encryption_key'); // Encrypted storage key
+            
+            // Status & Processing
+            $table->enum('status', [
+                'processing',
+                'completed', 
+                'review',
+                'failed'
+            ])->default('processing');
+            
+            $table->timestamp('upload_date');
+            $table->timestamp('processed_at')->nullable();
+            
+            // Additional metadata
+            $table->json('metadata')->nullable(); // Store additional file metadata
+            
+            // Audit fields
             $table->timestamps();
-
-            // Indexes for better performance
+            $table->softDeletes();
+            
+            // Indexes for performance
             $table->index(['user_id', 'category']);
             $table->index(['user_id', 'status']);
-            $table->index('file_hash');
+            $table->index(['user_id', 'client_name']);
+            $table->index('upload_date');
         });
     }
 
-    public function down()
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
     {
         Schema::dropIfExists('documents');
     }

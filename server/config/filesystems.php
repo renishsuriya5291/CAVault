@@ -24,7 +24,7 @@ return [
     | may even configure multiple disks for the same driver. Examples for
     | most supported storage drivers are configured here for reference.
     |
-    | Supported drivers: "local", "ftp", "sftp", "s3"
+    | Supported Drivers: "local", "ftp", "sftp", "s3"
     |
     */
 
@@ -58,6 +58,40 @@ return [
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'throw' => false,
             'report' => false,
+        ],
+
+        // Wasabi S3-compatible storage configuration for CA Vault
+        'wasabi' => [
+            'driver' => 's3',
+            'key' => env('WASABI_ACCESS_KEY_ID'),
+            'secret' => env('WASABI_SECRET_ACCESS_KEY'),
+            'region' => env('WASABI_DEFAULT_REGION', 'ap-northeast-1'),
+            'bucket' => env('WASABI_BUCKET'),
+            'endpoint' => env('WASABI_ENDPOINT', 'https://s3.ap-northeast-1.wasabisys.com'),
+            'use_path_style_endpoint' => true,
+            'throw' => false,
+            'report' => false,
+            'visibility' => 'private', // Keep documents private
+        ],
+
+        // Local encrypted storage (fallback)
+        'encrypted' => [
+            'driver' => 'local',
+            'root' => storage_path('app/encrypted'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+            'visibility' => 'private',
+        ],
+
+        // Temporary storage for processing
+        'temp' => [
+            'driver' => 'local',
+            'root' => storage_path('app/temp'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+            'visibility' => 'private',
         ],
 
     ],
