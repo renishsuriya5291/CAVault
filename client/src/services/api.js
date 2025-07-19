@@ -1,8 +1,8 @@
 // src/services/api.js
 import axios from 'axios';
 
-// Configure axios defaults
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Configure base URL - centralized configuration
+const API_BASE_URL =  'http://localhost:8000/api';
 
 // Create axios instance
 const api = axios.create({
@@ -11,7 +11,7 @@ const api = axios.create({
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 15000, // 15 seconds timeout
 });
 
 // Request interceptor to add auth token
@@ -40,7 +40,7 @@ api.interceptors.response.use(
       localStorage.removeItem('ca_token');
       window.location.href = '/login';
     } else if (error.response?.status === 419) {
-      // CSRF token mismatch - should not happen with API routes
+      // CSRF token mismatch
       console.error('CSRF token mismatch');
     } else if (error.response?.status >= 500) {
       // Server errors
@@ -54,70 +54,113 @@ api.interceptors.response.use(
 // Auth API methods
 export const authAPI = {
   // Register new user
-  register: (userData) => api.post('/api/auth/register', userData),
+  register: (userData) => api.post('/auth/register', userData),
   
   // Login user
-  login: (credentials) => api.post('/api/auth/login', credentials),
+  login: (credentials) => api.post('/auth/login', credentials),
   
   // Get current user
-  getUser: () => api.get('/api/auth/user'),
+  getUser: () => api.get('/auth/user'),
   
   // Logout current session
-  logout: () => api.post('/api/auth/logout'),
-  
-  // Logout from all devices
-  logoutAll: () => api.post('/api/auth/logout-all'),
+  logout: () => api.post('/auth/logout'),
   
   // Update user profile
-  updateProfile: (profileData) => api.put('/api/auth/profile', profileData),
+  updateProfile: (profileData) => api.put('/auth/profile', profileData),
   
   // Change password
-  changePassword: (passwordData) => api.post('/api/auth/change-password', passwordData),
-  
-  // Request password reset
-  forgotPassword: (email) => api.post('/api/auth/forgot-password', { email }),
-  
-  // Reset password
-  resetPassword: (resetData) => api.post('/api/auth/reset-password', resetData),
+  changePassword: (passwordData) => api.post('/auth/change-password', passwordData),
 };
 
-// Documents API methods (for future use)
+// Documents API methods
 export const documentsAPI = {
-  // Get all documents
-  getDocuments: () => api.get('/api/documents'),
+  // Get all documents with optional filters
+  getDocuments: (params = {}) => api.get('/documents', { params }),
   
   // Upload document
-  uploadDocument: (formData) => api.post('/api/documents/upload', formData, {
+  uploadDocument: (formData) => api.post('/documents', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
   }),
   
   // Get document by ID
-  getDocument: (id) => api.get(`/api/documents/${id}`),
+  getDocument: (id) => api.get(`/documents/${id}`),
   
   // Update document
-  updateDocument: (id, data) => api.put(`/api/documents/${id}`, data),
+  updateDocument: (id, data) => api.put(`/documents/${id}`, data),
   
   // Delete document
-  deleteDocument: (id) => api.delete(`/api/documents/${id}`),
+  deleteDocument: (id) => api.delete(`/documents/${id}`),
   
   // Download document
-  downloadDocument: (id) => api.get(`/api/documents/${id}/download`, {
-    responseType: 'blob',
-  }),
-};
-
-// Dashboard API methods (for future use)
-export const dashboardAPI = {
-  // Get dashboard stats
-  getStats: () => api.get('/api/dashboard/stats'),
+  downloadDocument: (id) => api.get(`/documents/${id}/download`),
+  
+  // Search documents
+  searchDocuments: (params = {}) => api.get('/documents/search', { params }),
+  
+  // Get document statistics
+  getStats: () => api.get('/documents/stats'),
   
   // Get recent documents
-  getRecentDocuments: () => api.get('/api/dashboard/recent-documents'),
+  getRecentDocuments: (params = {}) => api.get('/documents/recent', { params }),
   
-  // Get notifications
-  getNotifications: () => api.get('/api/dashboard/notifications'),
+  // Get document categories
+  getCategories: () => api.get('/documents/categories'),
 };
 
+// Dashboard API methods
+export const dashboardAPI = {
+  // Get dashboard statistics
+  getStats: () => api.get('/documents/stats'),
+  
+  // Get recent documents
+  getRecentDocuments: (limit = 4) => api.get('/documents/recent', { 
+    params: { limit } 
+  }),
+  
+  // Get recent activity
+  getRecentActivity: () => api.get('/dashboard/recent-activity'),
+  
+  // Get storage statistics
+  getStorageStats: () => api.get('/storage/stats'),
+};
+
+// Storage API methods
+export const storageAPI = {
+  // Get storage statistics
+  getStats: () => api.get('/storage/stats'),
+};
+
+// Helper function to handle API errors
+export const handleApiError = (error) => {
+  console.error('API error:', error);
+  if (error.response) {
+    // Server responded with error status
+    return {
+      success: false,
+      message: error.response.data?.message || 'An error occurred',
+      errors: error.response.data?.errors || null,
+      status: error.response.status,
+    };
+  } else if (error.request) {
+    // Request made but no response received
+    return {
+      success: false,
+      message: 'Network error. Please check your connection.',
+      errors: null,
+      status: null,
+    };
+  } else {
+    // Something else happened
+    return {
+      success: false,
+      message: 'An unexpected error occurred',
+      errors: null,
+      status: null,
+    };
+  }
+};
+
+// Export the configured axios instance as default
 export default api;

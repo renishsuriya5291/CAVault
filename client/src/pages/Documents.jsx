@@ -19,112 +19,217 @@ import {
   MoreHorizontal,
   Eye,
   Share,
-  Archive
+  Archive,
+  Loader2,
+  RefreshCw,
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  Grid,
+  List,
+  CheckCircle,
+  X
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import Header from '../components/layout/Header';
 import Sidebar from '../components/layout/Sidebar';
+import { documentsAPI, handleApiError } from '../services/api';
 
 const Documents = () => {
   const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Main state
   const [documents, setDocuments] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // Filter and search state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedClient, setSelectedClient] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [sortBy, setSortBy] = useState('upload_date');
+  const [sortOrder, setSortOrder] = useState('desc');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [perPage, setPerPage] = useState(12);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalDocuments, setTotalDocuments] = useState(0);
+  
+  // UI state
   const [viewMode, setViewMode] = useState('grid'); // 'grid' or 'list'
+  const [selectedDocuments, setSelectedDocuments] = useState([]);
+  const [deleteLoading, setDeleteLoading] = useState({});
 
-  // Categories for filtering
-  const categories = [
-    { value: 'all', label: 'All Categories' },
-    { value: 'tax-returns', label: 'Tax Returns' },
-    { value: 'financial-statements', label: 'Financial Statements' },
-    { value: 'audit-reports', label: 'Audit Reports' },
-    { value: 'gst-returns', label: 'GST Returns' },
-    { value: 'invoices', label: 'Invoices' },
-    { value: 'contracts', label: 'Contracts' },
-    { value: 'others', label: 'Others' }
-  ];
+  // Fetch documents with filters
+  const fetchDocuments = async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
 
-  // Sample documents data
-  useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setDocuments([
-        {
-          id: 1,
-          name: 'Annual Tax Return - ABC Corp.pdf',
-          category: 'tax-returns',
-          size: '2.4 MB',
-          uploadedAt: '2024-07-15',
-          status: 'completed',
-          client: 'ABC Corporation',
-          tags: ['tax', 'annual', '2024']
-        },
-        {
-          id: 2,
-          name: 'Financial Statement Q4 2023.xlsx',
-          category: 'financial-statements',
-          size: '1.8 MB',
-          uploadedAt: '2024-07-14',
-          status: 'processing',
-          client: 'XYZ Ltd.',
-          tags: ['financial', 'q4', '2023']
-        },
-        {
-          id: 3,
-          name: 'Audit Report - Tech Solutions.pdf',
-          category: 'audit-reports',
-          size: '3.2 MB',
-          uploadedAt: '2024-07-13',
-          status: 'completed',
-          client: 'Tech Solutions',
-          tags: ['audit', 'compliance']
-        },
-        {
-          id: 4,
-          name: 'GST Return March 2024.pdf',
-          category: 'gst-returns',
-          size: '856 KB',
-          uploadedAt: '2024-07-12',
-          status: 'review',
-          client: 'Small Business Inc.',
-          tags: ['gst', 'march', '2024']
-        },
-        {
-          id: 5,
-          name: 'Service Agreement - Consulting.docx',
-          category: 'contracts',
-          size: '245 KB',
-          uploadedAt: '2024-07-11',
-          status: 'completed',
-          client: 'Consulting Firm',
-          tags: ['contract', 'service']
-        },
-        {
-          id: 6,
-          name: 'Invoice Template 2024.xlsx',
-          category: 'invoices',
-          size: '125 KB',
-          uploadedAt: '2024-07-10',
-          status: 'completed',
-          client: 'Multiple Clients',
-          tags: ['invoice', 'template']
+      // Build query parameters
+      const params = {
+        page: currentPage,
+        per_page: perPage,
+        sort_by: sortBy,
+        sort_order: sortOrder,
+      };
+
+      // Add filters if they exist
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (selectedCategory && selectedCategory !== 'all') params.category = selectedCategory;
+      if (selectedClient.trim()) params.client = selectedClient.trim();
+      if (selectedStatus && selectedStatus !== 'all') params.status = selectedStatus;
+
+      const response = await documentsAPI.getDocuments(params);
+      
+      if (response.data.success) {
+        setDocuments(response.data.data.data || []);
+        setCurrentPage(response.data.data.current_page || 1);
+        setTotalPages(response.data.data.last_page || 1);
+        setTotalDocuments(response.data.data.total || 0);
+        
+        // Update stats if available
+        if (response.data.stats) {
+          setStats(response.data.stats);
         }
-      ]);
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch documents');
+      }
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+      const errorInfo = handleApiError(error);
+      setError(errorInfo.message);
+    } finally {
       setLoading(false);
-    }, 1000);
+      setRefreshing(false);
+    }
+  };
+
+  // Fetch categories
+  const fetchCategories = async () => {
+    try {
+      const response = await documentsAPI.getCategories();
+      if (response.data.success) {
+        setCategories([
+          { value: 'all', label: 'All Categories' },
+          ...response.data.data
+        ]);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      // Fallback categories
+      setCategories([
+        { value: 'all', label: 'All Categories' },
+        { value: 'Tax Returns', label: 'Tax Returns' },
+        { value: 'Financial Statements', label: 'Financial Statements' },
+        { value: 'Audit Reports', label: 'Audit Reports' },
+        { value: 'GST Returns', label: 'GST Returns' },
+        { value: 'Other', label: 'Other' }
+      ]);
+    }
+  };
+
+  // Fetch stats
+  const fetchStats = async () => {
+    try {
+      const response = await documentsAPI.getStats();
+      if (response.data.success) {
+        setStats(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchCategories();
+    fetchStats();
   }, []);
 
-  // Filter documents based on search and category
-  const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         doc.client.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         doc.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesCategory = selectedCategory === 'all' || doc.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  // Fetch documents when filters change
+  useEffect(() => {
+    fetchDocuments();
+  }, [currentPage, perPage, sortBy, sortOrder, selectedCategory, selectedStatus]);
 
+  // Search with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentPage === 1) {
+        fetchDocuments();
+      } else {
+        setCurrentPage(1); // This will trigger fetchDocuments via the above useEffect
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, selectedClient]);
+
+  // Handle refresh
+  const handleRefresh = () => {
+    fetchDocuments(true);
+    fetchStats();
+  };
+
+  // Handle document deletion
+  const handleDeleteDocument = async (documentId) => {
+    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setDeleteLoading(prev => ({ ...prev, [documentId]: true }));
+      
+      const response = await documentsAPI.deleteDocument(documentId);
+      
+      if (response.data.success) {
+        // Remove document from state
+        setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+        setTotalDocuments(prev => prev - 1);
+        
+        // Show success message (you can implement toast here)
+        console.log('Document deleted successfully');
+      } else {
+        throw new Error(response.data.message || 'Failed to delete document');
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      const errorInfo = handleApiError(error);
+      alert(`Error deleting document: ${errorInfo.message}`);
+    } finally {
+      setDeleteLoading(prev => ({ ...prev, [documentId]: false }));
+    }
+  };
+
+  // Handle document download
+  const handleDownloadDocument = async (documentId, documentName) => {
+    try {
+      const response = await documentsAPI.downloadDocument(documentId);
+      
+      if (response.data.success && response.data.download_url) {
+        // Open download URL in new tab
+        window.open(response.data.download_url, '_blank');
+      } else {
+        throw new Error('Failed to get download URL');
+      }
+    } catch (error) {
+      console.error('Error downloading document:', error);
+      const errorInfo = handleApiError(error);
+      alert(`Error downloading document: ${errorInfo.message}`);
+    }
+  };
+
+  // Status badge helper
   const getStatusBadge = (status) => {
     const variants = {
       completed: 'bg-green-100 text-green-800',
@@ -134,14 +239,15 @@ const Documents = () => {
     };
     
     return (
-      <Badge className={`${variants[status]} border-0`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+      <Badge className={`${variants[status] || variants.completed} border-0`}>
+        {status?.charAt(0).toUpperCase() + status?.slice(1) || 'Unknown'}
       </Badge>
     );
   };
 
+  // File icon helper
   const getFileIcon = (fileName) => {
-    const extension = fileName.split('.').pop().toLowerCase();
+    const extension = fileName?.split('.').pop()?.toLowerCase() || '';
     const iconClass = "w-8 h-8";
     
     switch (extension) {
@@ -153,21 +259,49 @@ const Documents = () => {
       case 'docx':
       case 'doc':
         return <FileIcon className={`${iconClass} text-blue-600`} />;
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return <FileIcon className={`${iconClass} text-purple-600`} />;
       default:
         return <FileText className={`${iconClass} text-ca-neutral`} />;
     }
   };
 
+  // Format date helper
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    });
+    if (!dateString) return 'Unknown';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+      });
+    } catch {
+      return 'Invalid Date';
+    }
   };
 
-  if (loading) {
+  // Pagination helper
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  // Clear filters
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('all');
+    setSelectedClient('');
+    setSelectedStatus('all');
+    setCurrentPage(1);
+  };
+
+  // Loading state
+  if (loading && !refreshing) {
     return (
       <div className="min-h-screen bg-ca-light">
         <Header onMenuClick={() => setSidebarOpen(true)} />
@@ -175,12 +309,10 @@ const Documents = () => {
         
         <main className="lg:ml-64 pt-16">
           <div className="p-6 max-w-7xl mx-auto">
-            <div className="animate-pulse">
-              <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="h-48 bg-gray-200 rounded-lg"></div>
-                ))}
+            <div className="flex items-center justify-center h-64">
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin text-ca-primary mx-auto mb-4" />
+                <p className="text-ca-neutral">Loading documents...</p>
               </div>
             </div>
           </div>
@@ -196,6 +328,25 @@ const Documents = () => {
       
       <main className="lg:ml-64 pt-16">
         <div className="p-6 max-w-7xl mx-auto">
+          {/* Error Alert */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                <p className="text-red-800">{error}</p>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleRefresh}
+                  className="ml-auto text-red-600 hover:text-red-700"
+                >
+                  <RefreshCw className="w-4 h-4 mr-1" />
+                  Retry
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Header Section */}
           <div className="mb-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
@@ -205,7 +356,17 @@ const Documents = () => {
                   Manage and organize your client documents securely
                 </p>
               </div>
-              <div className="mt-4 sm:mt-0">
+              <div className="mt-4 sm:mt-0 flex gap-3">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                  className="text-ca-neutral hover:text-ca-dark"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                  {refreshing ? 'Refreshing...' : 'Refresh'}
+                </Button>
                 <Button asChild className="bg-ca-primary hover:bg-blue-700">
                   <Link to="/upload">
                     <Upload className="w-4 h-4 mr-2" />
@@ -226,7 +387,9 @@ const Documents = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-ca-neutral">Total Documents</p>
-                    <p className="text-2xl font-bold text-ca-dark">{documents.length}</p>
+                    <p className="text-2xl font-bold text-ca-dark">
+                      {stats.totalDocuments || totalDocuments || 0}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -240,7 +403,9 @@ const Documents = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-ca-neutral">Categories</p>
-                    <p className="text-2xl font-bold text-ca-dark">{categories.length - 1}</p>
+                    <p className="text-2xl font-bold text-ca-dark">
+                      {Object.keys(stats.categoryCounts || {}).length || categories.length - 1}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -255,9 +420,7 @@ const Documents = () => {
                   <div className="ml-4">
                     <p className="text-sm font-medium text-ca-neutral">This Month</p>
                     <p className="text-2xl font-bold text-ca-dark">
-                      {documents.filter(doc => 
-                        new Date(doc.uploadedAt).getMonth() === new Date().getMonth()
-                      ).length}
+                      {stats.recentUploads || 0}
                     </p>
                   </div>
                 </div>
@@ -272,7 +435,9 @@ const Documents = () => {
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-ca-neutral">Storage Used</p>
-                    <p className="text-2xl font-bold text-ca-dark">68%</p>
+                    <p className="text-2xl font-bold text-ca-dark">
+                      {stats.storageUsed || 0}%
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -282,23 +447,44 @@ const Documents = () => {
           {/* Search and Filter Section */}
           <Card className="ca-shadow border-0 mb-6">
             <CardContent className="p-6">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-ca-neutral" />
-                    <Input
-                      placeholder="Search documents, clients, or tags..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10"
-                    />
+              <div className="space-y-4">
+                {/* Search and View Toggle */}
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-ca-neutral" />
+                      <Input
+                        placeholder="Search documents, clients, or tags..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={viewMode === 'grid' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('grid')}
+                    >
+                      <Grid className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant={viewMode === 'list' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('list')}
+                    >
+                      <List className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex gap-2">
+
+                {/* Filters */}
+                <div className="flex flex-col sm:flex-row gap-4">
                   <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full sm:w-48">
                       <Filter className="w-4 h-4 mr-2" />
-                      <SelectValue />
+                      <SelectValue placeholder="All Categories" />
                     </SelectTrigger>
                     <SelectContent>
                       {categories.map(category => (
@@ -308,99 +494,240 @@ const Documents = () => {
                       ))}
                     </SelectContent>
                   </Select>
+
+                  <Input
+                    placeholder="Filter by client..."
+                    value={selectedClient}
+                    onChange={(e) => setSelectedClient(e.target.value)}
+                    className="w-full sm:w-48"
+                  />
+
+                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="All Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="processing">Processing</SelectItem>
+                      <SelectItem value="review">Review</SelectItem>
+                      <SelectItem value="failed">Failed</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={`${sortBy}-${sortOrder}`} onValueChange={(value) => {
+                    const [newSortBy, newSortOrder] = value.split('-');
+                    setSortBy(newSortBy);
+                    setSortOrder(newSortOrder);
+                  }}>
+                    <SelectTrigger className="w-full sm:w-48">
+                      <SelectValue placeholder="Sort by" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="upload_date-desc">Newest First</SelectItem>
+                      <SelectItem value="upload_date-asc">Oldest First</SelectItem>
+                      <SelectItem value="document_name-asc">Name A-Z</SelectItem>
+                      <SelectItem value="document_name-desc">Name Z-A</SelectItem>
+                      <SelectItem value="file_size-desc">Size Large-Small</SelectItem>
+                      <SelectItem value="file_size-asc">Size Small-Large</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {(searchQuery || (selectedCategory && selectedCategory !== 'all') || selectedClient || (selectedStatus && selectedStatus !== 'all')) && (
+                    <Button variant="ghost" size="sm" onClick={clearFilters}>
+                      <X className="w-4 h-4 mr-2" />
+                      Clear
+                    </Button>
+                  )}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Documents Grid */}
-          {filteredDocuments.length === 0 ? (
+          {/* Documents Display */}
+          {documents.length === 0 ? (
             <Card className="ca-shadow border-0">
               <CardContent className="p-12 text-center">
                 <FileText className="w-12 h-12 text-ca-neutral mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-ca-dark mb-2">No documents found</h3>
                 <p className="text-ca-neutral mb-4">
-                  {searchQuery || selectedCategory !== 'all' 
+                  {searchQuery || (selectedCategory && selectedCategory !== 'all') || selectedClient || (selectedStatus && selectedStatus !== 'all')
                     ? 'Try adjusting your search criteria' 
                     : 'Upload your first document to get started'
                   }
                 </p>
-                <Button asChild className="bg-ca-primary hover:bg-blue-700">
-                  <Link to="/upload">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload Document
-                  </Link>
-                </Button>
+                <div className="flex gap-2 justify-center">
+                  {(searchQuery || (selectedCategory && selectedCategory !== 'all') || selectedClient || (selectedStatus && selectedStatus !== 'all')) && (
+                    <Button variant="outline" onClick={clearFilters}>
+                      <X className="w-4 h-4 mr-2" />
+                      Clear Filters
+                    </Button>
+                  )}
+                  <Button asChild className="bg-ca-primary hover:bg-blue-700">
+                    <Link to="/upload">
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload Document
+                    </Link>
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredDocuments.map((document) => (
-                <Card key={document.id} className="ca-shadow border-0 hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        {getFileIcon(document.name)}
-                        <div className="flex-1 min-w-0">
-                          <CardTitle className="text-sm font-semibold text-ca-dark truncate">
-                            {document.name}
-                          </CardTitle>
-                          <CardDescription className="text-xs">
-                            {document.client}
-                          </CardDescription>
+            <>
+              {/* Documents Grid/List */}
+              <div className={`grid gap-6 mb-6 ${
+                viewMode === 'grid' 
+                  ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' 
+                  : 'grid-cols-1'
+              }`}>
+                {documents.map((document) => (
+                  <Card key={document.id} className="ca-shadow border-0 hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {getFileIcon(document.document_name || document.name)}
+                          <div className="flex-1 min-w-0">
+                            <CardTitle className="text-sm font-semibold text-ca-dark truncate">
+                              {document.document_name || document.name || 'Untitled Document'}
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                              {document.client_name || document.client || 'Unknown Client'}
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    
+                    <CardContent className="pt-0">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between text-xs text-ca-neutral">
+                          <span>{document.file_size || document.size || 'Unknown size'}</span>
+                          <span>{formatDate(document.upload_date || document.uploadedAt)}</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          {getStatusBadge(document.status)}
+                          <Badge variant="outline" className="text-xs">
+                            {document.category || 'Uncategorized'}
+                          </Badge>
+                        </div>
+
+                        {document.tags && document.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {document.tags.slice(0, 3).map((tag, index) => (
+                              <Badge key={index} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                            {document.tags.length > 3 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{document.tags.length - 3}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 pt-2">
+                          <Button size="sm" variant="outline" className="flex-1">
+                            <Eye className="w-3 h-3 mr-1" />
+                            View
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="flex-1"
+                            onClick={() => handleDownloadDocument(document.id, document.document_name || document.name)}
+                          >
+                            <Download className="w-3 h-3 mr-1" />
+                            Download
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleDeleteDocument(document.id)}
+                            disabled={deleteLoading[document.id]}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            {deleteLoading[document.id] ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3 h-3" />
+                            )}
+                          </Button>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <MoreHorizontal className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="pt-0">
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between text-xs text-ca-neutral">
-                        <span>{document.size}</span>
-                        <span>{formatDate(document.uploadedAt)}</span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between">
-                        {getStatusBadge(document.status)}
-                        <Badge variant="outline" className="text-xs">
-                          {categories.find(cat => cat.value === document.category)?.label}
-                        </Badge>
-                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
 
-                      <div className="flex flex-wrap gap-1">
-                        {document.tags.slice(0, 3).map((tag, index) => (
-                          <Badge key={index} variant="secondary" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                        {document.tags.length > 3 && (
-                          <Badge variant="secondary" className="text-xs">
-                            +{document.tags.length - 3}
-                          </Badge>
-                        )}
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <Card className="ca-shadow border-0">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-ca-neutral">
+                        Showing {((currentPage - 1) * perPage) + 1} to {Math.min(currentPage * perPage, totalDocuments)} of {totalDocuments} documents
                       </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                          Previous
+                        </Button>
+                        
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            const page = i + 1;
+                            return (
+                              <Button
+                                key={page}
+                                variant={currentPage === page ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => handlePageChange(page)}
+                                className="w-8 h-8 p-0"
+                              >
+                                {page}
+                              </Button>
+                            );
+                          })}
+                          {totalPages > 5 && (
+                            <>
+                              <span className="text-ca-neutral">...</span>
+                              <Button
+                                variant={currentPage === totalPages ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => handlePageChange(totalPages)}
+                                className="w-8 h-8 p-0"
+                              >
+                                {totalPages}
+                              </Button>
+                            </>
+                          )}
+                        </div>
 
-                      <div className="flex gap-2 pt-2">
-                        <Button size="sm" variant="outline" className="flex-1">
-                          <Eye className="w-3 h-3 mr-1" />
-                          View
-                        </Button>
-                        <Button size="sm" variant="outline" className="flex-1">
-                          <Download className="w-3 h-3 mr-1" />
-                          Download
-                        </Button>
-                        <Button size="sm" variant="outline">
-                          <Share className="w-3 h-3" />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                        >
+                          Next
+                          <ChevronRight className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </main>
